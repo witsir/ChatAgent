@@ -1,44 +1,25 @@
-# ScrapeGPT
-
-This Python script logs into openai.com bypassing the Cloudflare captcha, goes to chatgpt , write a prompt and print the response
-
-**P.S: we are working on adding cookies to remember login and avoid repeat the login every time**
-
-
-
-
-
-To use it you will need:
-1) Have Chrome installed
-2) Change your email and password to yours inside the script
-
-
-
-After that:
-
-`git clone https://github.com/0ut0flin3/GPT-1984.git`
-
-`cd GPT-1984/ScrapeGPT`
-
-`pip install -r requirements.txt`
-
-`python3 app.py "hello, what are you doing?"`
-
-The response will be printed on the console at the end of the procedure.
-It works perfectly 90% of the time, but sometimes it crashes for some reason.
-
-Below I suggest some very simple PHP code that calls the Python crypt, takes the prompt sent by the client and sends it the response:
-```php
-<?php
-
-$prompt=$_GET["prompt"];
-
-$response=shell_exec('python3 /path/to/app.py "'.$prompt.'"');
-
-echo $response;
-
-?>
+## 介绍
+首先你需要梯子，梯子已经将 openai.com 等网站设置为走proxy
+套web端的 chat.openai.com,
+> TODO 后面会增加其他网页对话模型
+## 安装
+```bash
+git clone git@github.com:witsir/ChatAgent.git
+#切换至 pyproject.toml 所在目录 
+cd ChatAgent
+pip install -e .
 ```
 
-in this way a client can communicate with ChatGPT simply with : `curl www.yoursite.com/index.php?prompt=hello`
-
+## 使用
+```bash
+# 进入子目录,创建 .env 文件保存 你的EMAIL和PASSWORD
+cd ChatAgent
+echo "EMAIL=your email" > .env
+echo "PASSWORD=your password" >> .env
+```
+```python
+from ChatAgent import ChatgptAgent, ConversationAgent
+chat_agent =ChatgptAgent()
+conversation = ConversationAgent(chat_agent.session)
+print(chat_agent.ask_chat("""写一个女权小作文""",conversation))
+```

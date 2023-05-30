@@ -1,14 +1,13 @@
 import json
-import threading
-import time
 import uuid
 from collections import OrderedDict
 from pathlib import Path
 
 import requests
 
-from headers import get_headers_for_moderations, keep_session
-from log_handler import logger
+from exceptions import Requests403Error
+from .headers import get_headers_for_moderations
+from .log_handler import logger
 
 
 def save_conversation_data(conversation_id: str, conversation_date: str):
@@ -18,7 +17,7 @@ def save_conversation_data(conversation_id: str, conversation_date: str):
     path = path / f"{conversation_id}.json"
     with open(path, "w") as f:
         f.write(conversation_date)
-        logger.info(f"success in saving conversation {conversation_id}")
+        print(f"success in saving conversation {conversation_id}")
 
 
 def load_conversation(conversation_id: str, load_str=False) -> OrderedDict | str | None:
@@ -63,9 +62,8 @@ def show_prose_conversation(conversation_id: str) -> str | None:
 
 
 class ConversationAgent:
-    def __init__(self, session: requests.Session, conversation_id=None, is_keep=False):
+    def __init__(self, session: requests.Session, conversation_id=None):
         self.session = session
-        self.is_keep = is_keep
         self.is_echo = False
         if not conversation_id:
             self.is_new_conversation = True
@@ -74,36 +72,21 @@ class ConversationAgent:
         else:
             self.is_new_conversation = False
             self.conversation_id = conversation_id
-            _ = load_conversation(conversation_id)
-            self.conversation_name, self.current_node = _["title"], _["current_node"]
-        if self.is_keep:
-            self.keep_session()
+            _data = load_conversation(conversation_id)
+            self.conversation_name, self.current_node = _data["title"], _data["current_node"]
 
-    def fetch_conversation_history(self):
+    def fetch_conversation_history(self, access_token: str):
         if self.is_echo:
             response = self.session.get(
-                    url=f"https://chat.openai.com/backend-api/conversation/{self.conversation_id}",
-                    headers=get_headers_for_moderations(self.conversation_id))
+                url=f"https://chat.openai.com/backend-api/conversation/{self.conversation_id}",
+                headers=get_headers_for_moderations(access_token, self.conversation_id))
 
             if response.status_code == 200:
                 save_conversation_data(self.conversation_id, response.text)
-
-            else:
+            if response.status_code == 403:
                 logger.warning(f"get conversation history failed [Status Code] {response.status_code}")
+                raise Requests403Error()
 
-    def rename_conversation_title(self, name: str) -> bool:
-        payload = json.dumps({"title": name})
-        response = self.session.post(
-            url=f"https://chat.openai.com/backend-api/conversation/{self.conversation_id}",
-            headers=get_headers_for_moderations(self.conversation_id),
-            data=payload)
-        if response.status_code == 200:
-            try:
-                logger.info("success in renaming conversation")
-                return response.json()["success"]
-            except Exception as e:
-                logger.error(f"Failed in renaming conversation", e)
-                return False
 
 
     @property
@@ -112,15 +95,6 @@ class ConversationAgent:
 
     def save_conversation_data(self, conversation_date: str):
         save_conversation_data(self.conversation_id, conversation_date)
-
-    def keep_session(self):
-        threading.Thread(target=self.wrapper_session_get, args=(self,)).start()
-
-    def wrapper_session_get(self):
-        while self.is_keep:
-            time.sleep(10)
-            self.session.get("https://chat.openai.com/api/auth/session",
-                             headers=keep_session(self.conversation_id))
 
     def __str__(self):
         return f"Conversation\n" \

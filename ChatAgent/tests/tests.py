@@ -1,14 +1,17 @@
-import requests
+# import requests
 
-from auth_handler import get_access_token, get_cookies
-from config import *
+# from auth_handler import get_access_token, get_cookies
 
-from conversation import show_prose_conversation, ConversationAgent
-from use_requests import ChatgptAgent
+
+# from conversation import show_prose_conversation, ConversationAgent
+# from use_requests import ChatgptAgent
 
 from playload import get_request_moderations_playload, get_request_conversation_playload
-########## test dotenv
-# print(EMAIL)
+########## test Config
+# if __name__ == '__main__':
+#     from ChatAgent.config import config
+#     print(config["USER_AGENT_UA"]["version_main"])
+
 
 ########## test auth_handler
 # print(get_access_token())
@@ -26,13 +29,21 @@ from playload import get_request_moderations_playload, get_request_conversation_
 # print(con)
 
 ########## test ChatgptAgent
-from use_selenium import SeleniumRequests
+if __name__ == '__main__':
+    from ChatAgent.conversation import ConversationAgent
+    from ChatAgent.use_requests import ChatgptAgent
+    with ChatgptAgent() as chat_agent:
+        conversation = ConversationAgent(chat_agent.session)
+        # conversation = ConversationAgent(chat_agent.session)
+        # chat_agent.del_all_conversations()
+        print(chat_agent.ask_chat("说一个关于牛奶的笑话", conversation))
 
-with ChatgptAgent() as chat_agent:
-    conversation = ConversationAgent(chat_agent.session, "2659f633-46bf-46a5-a693-33c40e94b7b0")
-    # conversation = ConversationAgent(chat_agent.session)
-    print(chat_agent.ask_chat("他们是国有企业吗", conversation))
 
+########## test SeleniumRequests
+# if __name__ == '__main__':
+#     from use_selenium import SeleniumRequests
+#
+#     s = SeleniumRequests()
 
 # import datetime
 # #
@@ -49,4 +60,3 @@ with ChatgptAgent() as chat_agent:
 # cookies = session.cookies
 # for i in cookies:
 #     print(vars(i))
-

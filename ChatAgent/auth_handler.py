@@ -1,11 +1,13 @@
+import os
 from datetime import datetime, timezone
 import json
+from json import JSONDecodeError
 
 from pathlib import Path
 from typing import Literal
 
-from exceptions import NoSuchCookiesException, AccessTokenExpiredException
-from log_handler import logger
+from .exceptions import NoSuchCookiesException, AccessTokenExpiredException
+from .log_handler import logger
 
 LLM_PROVIDER = Literal["chatgpt", "bard"]
 
@@ -16,7 +18,8 @@ def get_access_token(name: LLM_PROVIDER) -> str:
         if path.exists():
             with open(path, 'r') as f:
                 access_token = json.load(f)
-                expires = datetime.fromisoformat(access_token['expires'])
+                expires = datetime.strptime(access_token['expires'], '%Y-%m-%dT%H:%M:%S.%fZ').replace(
+                    tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) < expires:
                     return access_token["accessToken"]
                 else:
@@ -44,9 +47,13 @@ def save_access_token(name: LLM_PROVIDER, token_str: str):
 def get_cookies(name: LLM_PROVIDER) -> list[dict] | None:
     if name == "chatgpt":
         path = Path(__file__).parent / "ChatgptAuth" / "cookies.json"
-        if path.exists():
+        if path.exists() and os.path.getsize(path) != 0:
             with open(path, 'r') as f:
-                return json.load(f)
+                try:
+                    return json.load(f)
+                except JSONDecodeError as e:
+                    logger.warning(f"decode Json cookies failed {e.msg}")
+                    return None
         else:
             raise NoSuchCookiesException
 
@@ -88,4 +95,3 @@ def get_next_data(name: LLM_PROVIDER):
                 return next_data_id
         except Exception as e:
             logger.error(f"get  {name} __NEXT_DATA__.json failed\n", e)
-
