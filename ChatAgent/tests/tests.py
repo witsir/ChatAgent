@@ -29,15 +29,15 @@ from playload import get_request_moderations_playload, get_request_conversation_
 # print(con)
 
 ########## test ChatgptAgent
-if __name__ == '__main__':
-    from ChatAgent.conversation import ConversationAgent
-    from ChatAgent.use_requests import ChatgptAgent
-    with ChatgptAgent() as chat_agent:
-        conversation = ConversationAgent(chat_agent.session)
-        # conversation = ConversationAgent(chat_agent.session)
-        # chat_agent.del_all_conversations()
-        print(chat_agent.ask_chat("说一个关于牛奶的笑话", conversation))
-        print(chat_agent.ask_chat("说一个关于小羊的笑话", conversation))
+# if __name__ == '__main__':
+#     from ChatAgent.conversation import ConversationAgent
+#     from ChatAgent.use_requests import ChatgptAgent
+#     with ChatgptAgent() as chat_agent:
+#         conversation = ConversationAgent(chat_agent.session)
+#         # conversation = ConversationAgent(chat_agent.session)
+#         # chat_agent.del_all_conversations()
+#         print(chat_agent.ask_chat("说一个关于牛奶的笑话", conversation))
+#         print(chat_agent.ask_chat("说一个关于小羊的笑话", conversation))
 
 
 ########## test SeleniumRequests
@@ -61,3 +61,9 @@ if __name__ == '__main__':
 # cookies = session.cookies
 # for i in cookies:
 #     print(vars(i))
+
+
+if __name__ == '__main__':
+    s = """{"action":"continue","conversation_id":"e1a6e164-dd8a-4af7-b283-dd23f18a6249","parent_message_id":"97515bbd-eea0-4aa9-b480-0666c12d3395","model":"text-davinci-002-render-sha","timezone_offset_min":-480,"history_and_training_disabled":false,"arkose_token":null,"supports_modapi":false}"""
+    import json
+    print(json.loads(s))

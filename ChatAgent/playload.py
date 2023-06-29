@@ -30,6 +30,20 @@ def get_request_conversation_playload(prompt: str,
     })
 
 
+def get_continue_conversation_playload(conversation_id: str,
+                                       parent_message_id: str) -> str:
+    return json.dumps(
+        {'action': 'continue',
+         'conversation_id': conversation_id,
+         'parent_message_id': parent_message_id,
+         'model': 'text-davinci-002-render-sha',
+         'timezone_offset_min': -480,
+         'history_and_training_disabled': False,
+         'arkose_token': None,
+         'supports_modapi': False}
+    )
+
+
 def get_new_conversation_playload(prompt: str,
                                   parent_message_id: str,
                                   message_id: str) -> str:
