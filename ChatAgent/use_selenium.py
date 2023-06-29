@@ -26,12 +26,11 @@ def _fetch_cookies(name: LLM_PROVIDER, cookies: list[dict]):
 class SeleniumRequests(metaclass=SingletonMeta):
 
     def __init__(self):
-        # self.driver = uc.Chrome(headless=True)
-        self.driver = uc.Chrome()
+        self.driver = uc.Chrome(headless=True)
+        # self.driver = uc.Chrome()
         self._wait15 = WebDriverWait(self.driver, 15)
         self._wait25 = WebDriverWait(self.driver, 25)
         self._wait35 = WebDriverWait(self.driver, 35)
-        self.local_version_main = None
 
     @property
     def get_driver(self):
@@ -80,8 +79,6 @@ class SeleniumRequests(metaclass=SingletonMeta):
                                      EC.presence_of_element_located((By.XPATH, "//button/div[text()=\"Next\"]")),
                                      EC.presence_of_element_located((By.XPATH, '//textarea[@id="prompt-textarea"]'))
                                      ))
-        if self.driver.find_elements(By.XPATH, '//button/div[text()="Log in"]'):
-            return False
         if self.driver.find_elements(By.XPATH, "//button/div[text()=\"Next\"]"):
             self.driver.find_element(By.XPATH, "//button/div[text()=\"Next\"]").click()
             self.driver.find_element(By.XPATH, "//button/div[text()=\"Next\"]").click()
@@ -90,6 +87,8 @@ class SeleniumRequests(metaclass=SingletonMeta):
 
         if self.driver.find_elements(By.XPATH, '//textarea[@id="prompt-textarea"]'):
             return True
+        if self.driver.find_elements(By.XPATH, '//button/div[text()="Log in"]'):
+            return False
 
     def _handle_login(self, mail: str, password: str):
         # 处理 Login
@@ -139,6 +138,7 @@ class SeleniumRequests(metaclass=SingletonMeta):
 
     def from_session_cookies(self) -> list[dict]:
         self.driver.get(f"https://chat.openai.com/api/auth/session")
+        time.sleep(1)
         cookies = self.driver.get_cookies()
         return cookies
 
@@ -181,8 +181,8 @@ class SeleniumRequests(metaclass=SingletonMeta):
                 if cookie["name"] == "__Secure-next-auth.session-token" and cookie["expiry"] < int(time.time()):
                     self.chatgpt_login()
                     return
-                # if cookie["name"] == "__Host-next-auth.csrf-token":
-                #     continue
+                if cookie["name"] == "__Host-next-auth.csrf-token":
+                    continue
                 self.driver.add_cookie(cookie)
             except UnableToSetCookieException as e:
                 logger.warning(f"{e.msg} {cookie['name']}")

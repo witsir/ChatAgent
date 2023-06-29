@@ -37,6 +37,7 @@ if __name__ == '__main__':
         # conversation = ConversationAgent(chat_agent.session)
         # chat_agent.del_all_conversations()
         print(chat_agent.ask_chat("说一个关于牛奶的笑话", conversation))
+        print(chat_agent.ask_chat("说一个关于小羊的笑话", conversation))
 
 
 ########## test SeleniumRequests

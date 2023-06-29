@@ -15,7 +15,7 @@ from .conversation import ConversationAgent
 from .exceptions import NoSuchCookiesException, AccessTokenExpiredException, Requests403Error, Requests500Error, \
     RequestsError
 from .headers import get_headers_for_moderations, get_headers_for_conversation, get_headers_for_new_conversation, \
-    keep_session
+    keep_session, get_headers_for_fetch_conversations
 from .log_handler import logger
 from .playload import get_request_conversation_playload, get_request_moderations_playload, get_new_conversation_playload
 from .use_selenium import SeleniumRequests
@@ -163,17 +163,29 @@ class ChatgptAgent(metaclass=SingletonMeta):
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         self.is_keep_session = False
         if self.is_echo:
-            save_cookies("chatgpt", self.cookies)
             for conversation in self.register_conversations:
-                try:
-                    conversation.fetch_conversation_history(self.access_token)
-                except Requests403Error:
-                    self._update_cookies_onceagain()
-                    conversation.fetch_conversation_history(self.access_token)
-                except Exception as e:
-                    logger.error(f'{type(e)}')
+                self.fetch_conversation_history(conversation)
+            save_cookies("chatgpt", self.cookies)
         if self.sl:
             self.sl.get_driver.quit()
+
+    @retry
+    def fetch_conversation_history(self, conversation: ConversationAgent | None):
+        if not conversation:
+            conversation = self.current_conversation
+        if self.is_echo:
+            response = self.session.get(
+                url=f"https://chat.openai.com/backend-api/conversation/{conversation.conversation_id}",
+                headers=get_headers_for_fetch_conversations(self.access_token, conversation.conversation_id))
+            if response.status_code == 200:
+                conversation.save_conversation_data(response.text)
+            elif response.status_code == 403:
+                logger.warning(f"fetch conversation history failed [Status Code] {response.status_code}")
+                self._update_cookies_onceagain()
+                self.fetch_conversation_history(conversation)
+                # raise Requests403Error()
+            else:
+                raise RequestsError(f"Requests {response.status_code}")
 
     def quit(self):
         self.__exit__()

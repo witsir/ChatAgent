@@ -5,8 +5,6 @@ from pathlib import Path
 
 import requests
 
-from exceptions import Requests403Error
-from .headers import get_headers_for_moderations
 from .log_handler import logger
 
 
@@ -74,20 +72,6 @@ class ConversationAgent:
             self.conversation_id = conversation_id
             _data = load_conversation(conversation_id)
             self.conversation_name, self.current_node = _data["title"], _data["current_node"]
-
-    def fetch_conversation_history(self, access_token: str):
-        if self.is_echo:
-            response = self.session.get(
-                url=f"https://chat.openai.com/backend-api/conversation/{self.conversation_id}",
-                headers=get_headers_for_moderations(access_token, self.conversation_id))
-
-            if response.status_code == 200:
-                save_conversation_data(self.conversation_id, response.text)
-            if response.status_code == 403:
-                logger.warning(f"get conversation history failed [Status Code] {response.status_code}")
-                raise Requests403Error()
-
-
 
     @property
     def conversation_prose(self):
