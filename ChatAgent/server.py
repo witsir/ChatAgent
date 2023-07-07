@@ -40,7 +40,8 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers["Content-Length"])
         post_data = self.rfile.read(content_length).decode("utf-8")
         prompt = json.loads(post_data)["messages"][1]["content"]
-        response = _resp_data(self.chat_agent.ask_chat(_system_prompt + prompt, self.conversation))
+        response = _resp_data(SimpleHTTPRequestHandler.chat_agent.ask_chat(_system_prompt + prompt,
+                                                                           SimpleHTTPRequestHandler.conversation))
         self.send_response(200)
         self.send_header("Content-type", "application/json'")
         self.end_headers()
@@ -56,14 +57,16 @@ class FakeChatgptApi:
                  ):
         self.server_address = server_address
         self.chat_agent = chat_agent
-        self.conversation = conversation if conversation else ConversationAgent(self.chat_agent.session,
-                                                                                conversation_id)
+        self.conversation = conversation if conversation else ConversationAgent(conversation_id)
         SimpleHTTPRequestHandler.chat_agent = self.chat_agent
         SimpleHTTPRequestHandler.conversation = self.conversation
         self.httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
 
     def start_server(self):
-        self.httpd.serve_forever()
+        try:
+            self.httpd.serve_forever()
+        except KeyboardInterrupt:
+            self.chat_agent.quit()
 
     def stop_server(self):
         self.httpd.shutdown()

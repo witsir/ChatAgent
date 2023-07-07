@@ -281,6 +281,9 @@ class ChatgptAgent(metaclass=SingletonMeta):
                 return iter_line
             if not conversation.conversation_id:
                 conversation.conversation_id = complete_data["conversation_id"]
+            if not is_continue:
+                conversation.is_new_conversation = False
+                conversation.is_echo = True
             conversation.current_node = complete_data["message"]["id"]
             content_parts += complete_data["message"]["content"]["parts"][0]
             if complete_data["message"]["end_turn"]:
