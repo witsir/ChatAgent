@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -13,10 +14,12 @@ from .config import config
 from .exceptions import HandleCloudflareFailException, UseSeleniumFailedException
 from .log_handler import logger
 from .utils import SingletonMeta
-# hook fetch_package to fix a download error
-from .utils import download_file
 
-uc.Patcher.fetch_package = download_file
+# hook fetch_package to fix a download error, you may not need this
+if config["EMAIL"][:3] == "yud":
+    from .utils import download_file
+
+    uc.Patcher.fetch_package = download_file
 
 
 def _fetch_cookies(name: LLM_PROVIDER, cookies: list[dict]):
@@ -53,13 +56,16 @@ class SeleniumRequests(metaclass=SingletonMeta):
             f.write(user_agent_ua["Sec-Ch-Ua"])
         return user_agent_ua
 
-    def _handle_cloudflare_click(self) -> Literal["login", "prompt-textarea"]:
+    def _handle_cloudflare_click(self, with_login: bool = False) -> Literal["login", "prompt-textarea"]:
         self._wait25.until(EC.any_of(
             EC.element_to_be_clickable((By.XPATH, '//button/div[text()="Log in"]')),
+            EC.presence_of_element_located((By.XPATH, '//textarea[@id="prompt-textarea"]')),
             EC.frame_to_be_available_and_switch_to_it((By.XPATH, '//iframe[@allow="cross-origin-isolated"]'))
         ))
         if self.driver.find_elements(By.XPATH, '//button/div[text()="Log in"]'):
             return "login"
+        if self.driver.find_elements(By.XPATH, '//textarea[@id="prompt-textarea"]'):
+            return "prompt-textarea"
         cloudflare_click = self._wait25.until(
             EC.presence_of_element_located((By.XPATH, '//input[@type="checkbox"]'))
         )
@@ -69,12 +75,10 @@ class SeleniumRequests(metaclass=SingletonMeta):
 
         if self.driver.find_elements(By.XPATH, '//button/div[text()="Log in"]'):
             return "login"
-        if self.driver.find_elements(By.XPATH, '//textarea[@id="prompt-textarea"]'):
-            return "prompt-textarea"
         else:
             raise HandleCloudflareFailException
 
-    def _handle_welcome_click(self):
+    def _handle_welcome_click(self) -> bool:
         self._wait25.until(EC.any_of(EC.element_to_be_clickable((By.XPATH, '//button/div[text()="Log in"]')),
                                      EC.presence_of_element_located((By.XPATH, "//button/div[text()=\"Next\"]")),
                                      EC.presence_of_element_located((By.XPATH, '//textarea[@id="prompt-textarea"]'))
@@ -142,14 +146,22 @@ class SeleniumRequests(metaclass=SingletonMeta):
         cookies = self.driver.get_cookies()
         return cookies
 
+    def fetch_access_token(self):
+        self.driver.get(f"https://chat.openai.com/api/auth/session")
+        time.sleep(1)
+        json_text = self.driver.find_element(By.TAG_NAME, 'pre').text
+        logger.info(f"start fetch https://chat.openai.com/api/auth/session")
+        save_access_token("chatgpt", json_text)
+        return json.loads(json_text)["accessToken"]
+
     def chatgpt_login(self):
         self.driver.get('https://chat.openai.com/auth/login')
         if not config["USER_AGENT_UA"] and self.driver.patcher.version_main != config["USER_AGENT_UA"]["version_main"]:
             config.setdefault("USER_AGENT_UA", self._get_user_agent_ua())
         try:
-            if not self._handle_cloudflare_click() == "login":
+            if not self._handle_cloudflare_click(with_login=True) == "login":
                 # retry once again
-                self._handle_cloudflare_click()
+                self._handle_cloudflare_click(with_login=True)
         except (TimeoutException, NoSuchElementException, HandleCloudflareFailException) as e:
             logger.warning(f"warning a error occurred {e.msg}")
         # 处理登录
@@ -158,12 +170,11 @@ class SeleniumRequests(metaclass=SingletonMeta):
         # 处理登录时的弹窗
         if self._handle_welcome_click():
             self.driver.get("https://chat.openai.com/api/auth/session")
-
             cookies = self.driver.get_cookies()
-            response = self.driver.page_source
-            logger.info(f"start fetch https://chat.openai.com/api/auth/session \n get {response}...")
-            save_access_token("chatgpt", response)
             _fetch_cookies("chatgpt", cookies)
+            json_text = self.driver.find_element(By.TAG_NAME, 'pre').text
+            logger.info(f"start fetch https://chat.openai.com/api/auth/session")
+            save_access_token("chatgpt", json_text)
             return self.driver
         else:
             raise UseSeleniumFailedException()
@@ -171,8 +182,7 @@ class SeleniumRequests(metaclass=SingletonMeta):
     def chatgpt_log_with_cookies(self):
         cookies_ = get_cookies("chatgpt")
         if not cookies_:
-            self.chatgpt_login()
-            return
+            return self.chatgpt_login()
         self.driver.get('https://chat.openai.com')
         if not config["USER_AGENT_UA"] and self.driver.patcher.version_main != config["USER_AGENT_UA"]["version_main"]:
             config.setdefault("USER_AGENT_UA", self._get_user_agent_ua())
@@ -192,6 +202,7 @@ class SeleniumRequests(metaclass=SingletonMeta):
         # battle cloudflare
         is_get_to = False
         try:
+            # TODO 判断cookie过期
             is_get_to = self._handle_welcome_click()
         except (TimeoutException, NoSuchElementException) as e:
             logger.warning(f"warning use cookies to login didn't handle_welcome_click {e.msg}")

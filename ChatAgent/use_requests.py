@@ -40,7 +40,8 @@ def _update_cookies_for_requests(session: requests.Session, name: LLM_PROVIDER) 
     return session
 
 
-def _update_cookies(resp: requests.Response, chat_cookies: list[dict]):
+def _update_cookies(session: requests.Session, resp: requests.Response, chat_cookies: list[dict]):
+    session.cookies.update(resp.cookies)
     for cookie_jar in resp.cookies:
         found = False
         for cookie in chat_cookies:
@@ -73,12 +74,13 @@ class ChatgptAgent(metaclass=SingletonMeta):
         self.sl = None
         self.session = self.prepare_session(proxies)
         self.cookies = get_cookies("chatgpt")
-        self.access_token = self.get_access_token()
+        self.access_token = self.get_access_token("chatgpt")
         self.is_keep_session = is_keep_session
         self.register_conversations = set()
         self.current_conversation = None
         self.start_keep_session = False
         self.is_echo = False
+        self.lock = threading.Lock()
 
     def _keep_session(self):
         self.start_keep_session = True
@@ -90,9 +92,9 @@ class ChatgptAgent(metaclass=SingletonMeta):
             response = self.session.get("https://chat.openai.com/api/auth/session",
                                         headers=keep_session(self.current_conversation.conversation_id))
             logger.info(f"keep_session get method return")
-            _update_cookies(response, self.cookies)
-            self.session.cookies.update(
-                cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
+            _update_cookies(self.session, response, self.cookies)
+            # self.session.cookies.update(
+            #     cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
 
     @retry
     def rename_conversation_title(self, name: str, conversation: ConversationAgent | None) -> bool:
@@ -108,14 +110,15 @@ class ChatgptAgent(metaclass=SingletonMeta):
             raise RequestsError(f"{type(e)}")
 
         if response.status_code == 200:
-            logger.info(f"success in renaming conversation response.json() {response.json()}")
+            logger.info(f"SUCCESS: Rename conversation, Response {response.json()}")
             conversation.conversation_name = name
             return response.json()["success"]
         if response.status_code == 403:
             self._update_cookies_onceagain()
             self.rename_conversation_title(name, conversation)
-            # raise Requests403Error()
         else:
+            logger.warning(
+                f"FAILED: Rename conversation, [Status Code] {response.status_code} | [Response Text]\n{response.text}")
             raise RequestsError(f"Requests {response.status_code}")
 
     def del_conversation_local(self, conversation_id: str):
@@ -124,7 +127,7 @@ class ChatgptAgent(metaclass=SingletonMeta):
         path = Path(__file__).parent / "conversations" / f"{conversation_id}.json"
         if path.exists():
             path.unlink()
-            logger.info(f"{conversation_id}.json deleted")
+            logger.info(f"local {conversation_id}.json deleted")
 
     @retry
     def del_conversation_remote(self, conversation_id: str | None):
@@ -140,13 +143,12 @@ class ChatgptAgent(metaclass=SingletonMeta):
             raise RequestsError(f"{type(e)}")
 
         if response.status_code == 200:
-            logger.info(f"success in deleting conversation {response.json()}")
+            logger.info(f"SUCCESS: Delete conversation {response.json()}")
             self.current_conversation = ConversationAgent(session=self.session)
             return response.json()["success"]
         elif response.status_code == 403:
             self._update_cookies_onceagain()
             self.del_conversation_remote(conversation_id)
-            # raise Requests403Error()
         else:
             raise RequestsError(f"Requests {response.status_code}")
 
@@ -175,32 +177,34 @@ class ChatgptAgent(metaclass=SingletonMeta):
         if not conversation:
             conversation = self.current_conversation
         if self.is_echo:
-            response = self.session.get(
-                url=f"https://chat.openai.com/backend-api/conversation/{conversation.conversation_id}",
-                headers=get_headers_for_fetch_conversations(self.access_token, conversation.conversation_id))
+            try:
+                response = self.session.get(
+                    url=f"https://chat.openai.com/backend-api/conversation/{conversation.conversation_id}",
+                    headers=get_headers_for_fetch_conversations(self.access_token, conversation.conversation_id))
+            except Exception as e:
+                raise RequestsError(f"{type(e)}")
             if response.status_code == 200:
                 conversation.save_conversation_data(response.text)
             elif response.status_code == 403:
-                logger.warning(f"fetch conversation history failed [Status Code] {response.status_code}")
+                logger.warning(f"FAILED: Fetch conversation history [Status Code] | {response.status_code}")
                 self._update_cookies_onceagain()
                 self.fetch_conversation_history(conversation)
-                # raise Requests403Error()
             else:
                 raise RequestsError(f"Requests {response.status_code}")
 
     def quit(self):
         self.__exit__()
 
-    def get_access_token(self) -> str | None:
+    def get_access_token(self, name: LLM_PROVIDER) -> str | None:
         try:
-            return get_access_token("chatgpt")
-        except AccessTokenExpiredException as e:
-            logger.warning(f"{e}")
+            return get_access_token(name)
+        except AccessTokenExpiredException:
+            logger.warning(f"AccessToken Expired. Will use Selenium next.")
             self.sl = SeleniumRequests()
             self.sl.chatgpt_login()
             return get_access_token("chatgpt")
         except Exception as e:
-            logger.error(f"{e}")
+            logger.error(f"{type(e)}")
             return None
 
     def prepare_session(self, proxies: dict[str, str] | None) -> requests.Session:
@@ -212,6 +216,7 @@ class ChatgptAgent(metaclass=SingletonMeta):
             return _update_cookies_for_requests(session, "chatgpt")
         except NoSuchCookiesException as e:
             logger.warning(f"Not fetch cookies yet, start use selenium {e.message}")
+            self.sl = SeleniumRequests()
             self.sl.chatgpt_login()
             return _update_cookies_for_requests(session, "chatgpt")
 
@@ -225,7 +230,7 @@ class ChatgptAgent(metaclass=SingletonMeta):
         except AccessTokenExpiredException:
             return
 
-    def _update_cookies_onceagain(self):
+    def _update_cookies_onceagain(self, update_access_token: bool = False):
         if self.sl:
             cookies_ = self.sl.from_session_cookies()
             self.cookies = cookies_
@@ -234,10 +239,19 @@ class ChatgptAgent(metaclass=SingletonMeta):
         else:
             self.sl = SeleniumRequests()
             self.sl.chatgpt_log_with_cookies()
+            if update_access_token:
+                self.access_token = self.sl.fetch_access_token()
             _update_cookies_for_requests(self.session, "chatgpt")
 
-    def _continue_conversation(self, headers, conversation: ConversationAgent, content_parts: str) -> str:
-        playload = get_continue_conversation_playload(conversation.conversation_id, conversation.current_node)
+    @retry
+    def _complete_conversation(self,
+                               conversation: ConversationAgent,
+                               headers: dict,
+                               playload: str = None,
+                               content_parts: str = "",
+                               is_continue: bool = False) -> str:
+        if is_continue:
+            playload = get_continue_conversation_playload(conversation.conversation_id, conversation.current_node)
         try:
             response = self.session.post(
                 "https://chat.openai.com/backend-api/conversation",
@@ -249,9 +263,8 @@ class ChatgptAgent(metaclass=SingletonMeta):
             raise RequestsError(f"{type(e)}")
 
         if response.status_code == 200:
-            logger.info(f"{response.cookies.items()}")
-            # self.session.cookies.update(
-            #     cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
+            if len(response.cookies) != 0:
+                _update_cookies(self.session, response, self.cookies)
             iter_line = None
             for line in response.iter_lines():
                 if line[7:11] != b"DONE" and line[7:11] == b'"mes':
@@ -260,25 +273,30 @@ class ChatgptAgent(metaclass=SingletonMeta):
                 last_data = re.search(r'data: (.*)', iter_line.decode("utf-8")).group(1)
                 complete_data = json.loads(last_data)
                 finish_details_start = last_data.find("finish_details") - 1
-                logger.info("success in getting  data\n"
+                logger.info("SUCCESS: Get data\n"
                             f"{last_data[finish_details_start:finish_details_start + 100]}"
                             "...")
             except JSONDecodeError:
-                logger.error(F"Encounter a JSONDecodeError, go to conversation to have a look")
+                logger.error(F"Encounter a JSONDecodeError, Check local conversation memorized")
                 return iter_line
-            conversation.conversation_id = complete_data["conversation_id"]
+            if not conversation.conversation_id:
+                conversation.conversation_id = complete_data["conversation_id"]
             conversation.current_node = complete_data["message"]["id"]
             content_parts += complete_data["message"]["content"]["parts"][0]
-            if complete_data["message"]["end_turn"] == True:
+            if complete_data["message"]["end_turn"]:
                 return content_parts
             else:
-                return self._continue_conversation(headers, conversation, content_parts)
+                return self._complete_conversation(conversation, headers, content_parts=content_parts, is_continue=True)
         elif response.status_code == 401:
-            logger.error(f"[Status Code] {response.status_code} | [Response Text] {response.text}")
-            raise AccessTokenExpiredException()
+            logger.warning(f"[Status Code] {response.status_code} | [Response Text] {response.text}")
+            raise AccessTokenExpiredException(message=f"[Status Code] {response.status_code}")
         elif response.status_code == 403:
-            logger.error(f"[Status Code] {response.status_code}")
-            raise Requests403Error()
+            logger.warning(f"[Status Code] {response.status_code}")
+            if is_continue:
+                self._update_cookies_onceagain()
+                return self._complete_conversation(conversation, headers, content_parts=content_parts, is_continue=True)
+            else:
+                raise Requests403Error(message=f"[Status Code] {response.status_code}")
         elif response.status_code >= 500:
             logger.warning(f"[Status Code] {response.status_code} | [Response Text] {response.text}")
             raise Requests500Error(message=f"Request {response.status_code}")
@@ -286,92 +304,43 @@ class ChatgptAgent(metaclass=SingletonMeta):
             logger.error(f"[Status Code] {response.status_code} | [Response Text] {response.text}")
             raise RequestsError(message=f"Request {response.status_code}")
 
-    def _get_a_conversation(self,
-                            conversation: ConversationAgent | None,
-                            headers: dict,
-                            playload: str) -> str:
-
-        try:
-            response = self.session.post(
-                "https://chat.openai.com/backend-api/conversation",
-                headers=headers,
-                data=playload,
-                stream=True
-            )
-        except Exception as e:
-            raise RequestsError(f"{type(e)}")
-
-        if response.status_code == 200:
-            # self.session.cookies.update(
-            #     cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
-            iter_line = None
-            for line in response.iter_lines():
-                if line[7:11] != b"DONE" and line[7:11] == b'"mes':
-                    iter_line = line
-            try:
-                last_data = re.search(r'data: (.*)', iter_line.decode("utf-8")).group(1)
-                complete_data = json.loads(last_data)
-                finish_details_start = last_data.find("finish_details") - 1
-                logger.info("success in getting  data\n"
-                            f"{last_data[finish_details_start:finish_details_start + 100]}"
-                            "...")
-            except JSONDecodeError:
-                logger.error(F"Encounter a JSONDecodeError, go to conversation to have a look")
-                return iter_line
-            if conversation.is_new_conversation:
-                conversation.conversation_id = complete_data["conversation_id"]
-                conversation.is_new_conversation = False
-            conversation.current_node = complete_data["message"]["id"]
-            if not self.is_echo:
-                conversation.is_echo = True
-                self.is_echo = True
-            content_parts = complete_data["message"]["content"]["parts"][0]
-            if complete_data["message"]["end_turn"] == True:
-                return content_parts
-            else:
-                return self._continue_conversation(headers, conversation, content_parts)
-        elif response.status_code == 401:
-            logger.error(f"[Status Code] {response.status_code} | [Response Text] {response.text}")
-            raise AccessTokenExpiredException()
-        elif response.status_code == 403:
-            logger.error(f"[Status Code] {response.status_code}")
-            raise Requests403Error()
-        elif response.status_code >= 500:
-            logger.warning(f"[Status Code] {response.status_code} | [Response Text] {response.text}")
-            raise Requests500Error(message=f"Request {response.status_code}")
-        else:
-            logger.error(f"[Status Code] {response.status_code} | [Response Text] {response.text}")
-            raise RequestsError(message=f"Request {response.status_code}")
-
-    @retry
     def ask_chat(self,
                  prompt: str,
                  conversation: ConversationAgent,
                  pass_moderation: bool = False,
                  ) -> str | None:
-        self.current_conversation = conversation
-        message_id = str(uuid.uuid4())
-        if not conversation.is_new_conversation:
-            conversation_playload = get_request_conversation_playload(prompt,
-                                                                      conversation.conversation_id,
+        with self.lock:
+            self.current_conversation = conversation
+            message_id = str(uuid.uuid4())
+            if not conversation.is_new_conversation:
+                conversation_playload = get_request_conversation_playload(prompt,
+                                                                          conversation.conversation_id,
+                                                                          conversation.current_node,
+                                                                          message_id)
+                headers = get_headers_for_conversation(self.access_token, conversation.conversation_id)
+            else:
+                conversation_playload = get_new_conversation_playload(prompt,
                                                                       conversation.current_node,
                                                                       message_id)
-            headers = get_headers_for_conversation(self.access_token, conversation.conversation_id)
-        else:
-            conversation_playload = get_new_conversation_playload(prompt,
-                                                                  conversation.current_node,
-                                                                  message_id)
-            headers = get_headers_for_new_conversation(self.access_token)
-        if not self.current_conversation.is_echo:
-            self.register_conversations.add(conversation)
-        if pass_moderation:
-            threading.Thread(target=self._pass_moderations,
-                             args=(conversation.conversation_id, prompt, message_id)).start()
-        if self.is_keep_session and not self.start_keep_session:
-            self._keep_session()
-        try:
-            return self._get_a_conversation(conversation, headers, conversation_playload)
-        except (Requests403Error, AccessTokenExpiredException) as e:
-            logger.warning(f"{e}，update cookies, call _get_a_conversation() again")
-            self._update_cookies_onceagain()
-            return self._get_a_conversation(conversation, headers, conversation_playload)
+                headers = get_headers_for_new_conversation(self.access_token)
+            if not conversation.is_echo:
+                self.register_conversations.add(conversation)
+            if pass_moderation:
+                threading.Thread(target=self._pass_moderations,
+                                 args=(conversation.conversation_id, prompt, message_id)).start()
+            if self.is_keep_session and not self.start_keep_session:
+                self._keep_session()
+            try:
+                return self._complete_conversation(conversation, headers, conversation_playload)
+            except AccessTokenExpiredException as e:
+                logger.warning(f"{e.message}，update cookies, call _complete_conversation() again")
+                self._update_cookies_onceagain(True)
+                if not conversation.is_new_conversation:
+                    headers = get_headers_for_conversation(self.access_token, conversation.conversation_id)
+                else:
+                    headers = get_headers_for_new_conversation(self.access_token)
+                return self._complete_conversation(conversation, headers, conversation_playload)
+            except Requests403Error as e:
+                logger.warning(f"{e.message}，update cookies, call _complete_conversation() again")
+                self._update_cookies_onceagain()
+                return self._complete_conversation(conversation, headers, conversation_playload)

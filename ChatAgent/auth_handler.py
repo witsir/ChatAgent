@@ -23,9 +23,9 @@ def get_access_token(name: LLM_PROVIDER) -> str:
                 if datetime.now(timezone.utc) < expires:
                     return access_token["accessToken"]
                 else:
-                    raise AccessTokenExpiredException
+                    raise AccessTokenExpiredException("AccessToken Expired")
         else:
-            raise AccessTokenExpiredException
+            raise AccessTokenExpiredException("AccessToken not Found")
 
 
 def save_access_token(name: LLM_PROVIDER, token_str: str):
@@ -36,7 +36,7 @@ def save_access_token(name: LLM_PROVIDER, token_str: str):
                 path.mkdir()
                 path = path / "accessToken.json"
                 with open(path, 'w') as f:
-                    json.dump(token_str, f)
+                    f.write(token_str)
                     logger.info(f"success in saving {name} accessToken.json")
         except Exception as e:
             logger.error(f"failed in saving {name} accessToken.json\n", e)
@@ -55,7 +55,7 @@ def get_cookies(name: LLM_PROVIDER) -> list[dict] | None:
                     logger.warning(f"decode Json cookies failed {e.msg}")
                     return None
         else:
-            raise NoSuchCookiesException
+            raise NoSuchCookiesException()
 
 
 def save_cookies(name: LLM_PROVIDER, cookies: list[dict]):
@@ -80,18 +80,17 @@ def save_next_data(name: LLM_PROVIDER, next_data: str):
                 path.mkdir()
                 path = path / "__NEXT_DATA__.json"
                 with open(path, 'w') as f:
-                    json.dump(next_data, f)
+                    f.write(next_data)
                     logger.info(f"success in saving {name} __NEXT_DATA__.json")
         except Exception as e:
             logger.error(f"failed in saving {name} __NEXT_DATA__.json\n", e)
 
 
-def get_next_data(name: LLM_PROVIDER):
+def get_next_data(name: LLM_PROVIDER) -> str | None:
     if name == "chatgpt":
         try:
             path = Path(__file__).parent / "ChatgptAuth" / "__NEXT_DATA__.json"
             with open(path, 'r') as f:
-                next_data_id = json.load(f)["buildId"]
-                return next_data_id
+                return json.load(f)["buildId"]
         except Exception as e:
-            logger.error(f"get  {name} __NEXT_DATA__.json failed\n", e)
+            logger.error(f"get  {name} __NEXT_DATA__.json failed error is {type(e)}")

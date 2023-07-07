@@ -62,7 +62,7 @@ def retry(
                 return func(*args, **kwargs)
 
             # Retry on specified errors
-            except (Requests403Error, Requests500Error, RequestsError) as e:
+            except (Requests500Error, RequestsError) as e:
                 print(e)
                 # Increment retries
                 num_retries += 1

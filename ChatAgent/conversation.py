@@ -3,8 +3,6 @@ import uuid
 from collections import OrderedDict
 from pathlib import Path
 
-import requests
-
 from .log_handler import logger
 
 
@@ -15,7 +13,7 @@ def save_conversation_data(conversation_id: str, conversation_date: str):
     path = path / f"{conversation_id}.json"
     with open(path, "w") as f:
         f.write(conversation_date)
-        print(f"success in saving conversation {conversation_id}")
+        print(f"SUCCESS: Save conversation {conversation_id}")
 
 
 def load_conversation(conversation_id: str, load_str=False) -> OrderedDict | str | None:
@@ -25,14 +23,14 @@ def load_conversation(conversation_id: str, load_str=False) -> OrderedDict | str
             with open(path, "r") as f:
                 if not load_str:
                     conversation = json.load(f, object_hook=OrderedDict)
-                    logger.info(f"success in loading conversation {conversation_id}")
+                    logger.info(f"SUCCESS: Load conversation {conversation_id}")
                     return conversation
                 return f.read()
         except Exception as e:
-            logger.warning(f"Failed in loading conversation {conversation_id}\n", e)
+            logger.warning(f"FAILED: Load conversation {conversation_id}, ERROR: {type(e)}")
             return None
     else:
-        logger.info(f"No conversation {conversation_id} data file")
+        logger.info(f"FAILED: No conversation file {conversation_id}")
         return None
 
 
@@ -47,7 +45,7 @@ def show_clean_conversation(conversation_id: str) -> list[str] | None:
             ]
             return clean_conversation
         except Exception as e:
-            logger.warning(f"Failed parsing clean conversation {conversation_id}\n", e)
+            logger.warning(f"Failed: Parsing clean conversation {conversation_id} {type(e)}")
     return None
 
 
@@ -60,8 +58,7 @@ def show_prose_conversation(conversation_id: str) -> str | None:
 
 
 class ConversationAgent:
-    def __init__(self, session: requests.Session, conversation_id=None):
-        self.session = session
+    def __init__(self, conversation_id=None):
         self.is_echo = False
         if not conversation_id:
             self.is_new_conversation = True
