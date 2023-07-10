@@ -17,7 +17,7 @@ import requests
 #                 instance = super().__call__(*args, **kwargs)
 #                 cls._instances[cls] = instance
 #         return cls._instances[cls]
-from exceptions import Requests500Error, RequestsError, Requests403Error
+from .exceptions import Requests500Error, RequestsError, Requests403Error
 
 
 class SingletonMeta(type):

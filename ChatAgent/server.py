@@ -1,9 +1,9 @@
 import json
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from time import time
 from typing import Tuple
-
-from .use_requests import ChatgptAgent, ConversationAgent
+from .chat_agent import ChatAgentPool
 
 _system_prompt = """\
 You are a professional translation engine, \
@@ -26,47 +26,57 @@ def _resp_data(content: str) -> str:
         }],
         "usage": {
             "prompt_tokens": 2048,
-            "completion_tokens": 2048,
-            "total_tokens": 4096
+            "completion_tokens": 8192,
+            "total_tokens": 10240
         }
     })
 
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-    chat_agent = None
-    conversation = None
+    chat_agent_pool = None
 
     def do_POST(self):
-        content_length = int(self.headers["Content-Length"])
-        post_data = self.rfile.read(content_length).decode("utf-8")
-        prompt = json.loads(post_data)["messages"][1]["content"]
-        response = _resp_data(SimpleHTTPRequestHandler.chat_agent.ask_chat(_system_prompt + prompt,
-                                                                           SimpleHTTPRequestHandler.conversation))
-        self.send_response(200)
-        self.send_header("Content-type", "application/json'")
-        self.end_headers()
-        self.wfile.write(response.encode())
+        try:
+            content_length = int(self.headers["Content-Length"])
+            post_data = self.rfile.read(content_length).decode("utf-8")
+            prompt = json.loads(post_data)["messages"][1]["content"]
+            response = _resp_data(SimpleHTTPRequestHandler.chat_agent_pool.ask_chat(_system_prompt + prompt))
+            # TODO BrokenPipeError: [Errno 32] Broken pipe
+            self.send_response(200)
+            self.send_header("Content-type", "application/json'")
+            self.end_headers()
+            self.wfile.write(response.encode())
+        except KeyboardInterrupt:
+            SimpleHTTPRequestHandler.chat_agent_pool.quit()
+            raise KeyboardInterrupt()
+
+
+class ThreadedHTTPServer(ThreadingHTTPServer):
+    def __init__(self, server_address):
+        super().__init__(server_address, SimpleHTTPRequestHandler)
 
 
 class FakeChatgptApi:
     def __init__(self,
-                 chat_agent: ChatgptAgent,
-                 conversation_id: str | None = None,
-                 conversation: ConversationAgent | None = None,
+                 conversation_list: list[str, None] | None = None,
                  server_address: Tuple[str, int] | None = ("", 5050),
                  ):
         self.server_address = server_address
-        self.chat_agent = chat_agent
-        self.conversation = conversation if conversation else ConversationAgent(conversation_id)
-        SimpleHTTPRequestHandler.chat_agent = self.chat_agent
-        SimpleHTTPRequestHandler.conversation = self.conversation
-        self.httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
+        if not conversation_list:
+            conversation_list = [None, None, None]
+        self.chat_agent_pool = ChatAgentPool(conversation_list)
+        SimpleHTTPRequestHandler.chat_agent_pool = self.chat_agent_pool
+        self.httpd = ThreadedHTTPServer(self.server_address)
 
-    def start_server(self):
+    def run_server(self):
+        print(f"Server running on {self.server_address}")
         try:
             self.httpd.serve_forever()
         except KeyboardInterrupt:
-            self.chat_agent.quit()
-
-    def stop_server(self):
-        self.httpd.shutdown()
+            try:
+                self.httpd.shutdown()
+                self.chat_agent_pool.quit()
+            except ConnectionRefusedError:
+                print(f"Server is closed")
+            except Exception as e:
+                print(f"{type(e)}")

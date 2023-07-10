@@ -25,6 +25,15 @@ class AccessTokenExpiredException(Exception):
         return f"AccessTokenExpiredException: {self.message}"
 
 
+class AuthenticationTokenExpired(Exception):
+    def __init__(self, message="Authentication Token Expired"):
+        self.message = message
+        super().__init__(self.message)
+
+    def __str__(self):
+        return f"AuthenticationTokenExpired: {self.message}"
+
+
 class UseSeleniumFailedException(Exception):
     def __init__(self, message="Use Selenium Failed"):
         self.message = message

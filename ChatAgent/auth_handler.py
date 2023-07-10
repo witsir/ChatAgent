@@ -12,9 +12,9 @@ from .log_handler import logger
 LLM_PROVIDER = Literal["chatgpt", "bard"]
 
 
-def get_access_token(name: LLM_PROVIDER) -> str:
+def get_access_token(name: LLM_PROVIDER, user: dict) -> str:
     if name == "chatgpt":
-        path = Path(__file__).parent / "ChatgptAuth" / "accessToken.json"
+        path = Path(__file__).parent / "ChatgptAuth" / f"{user['EMAIL']}_accessToken.json"
         if path.exists():
             with open(path, 'r') as f:
                 access_token = json.load(f)
@@ -26,27 +26,29 @@ def get_access_token(name: LLM_PROVIDER) -> str:
                     raise AccessTokenExpiredException("AccessToken Expired")
         else:
             raise AccessTokenExpiredException("AccessToken not Found")
+    if name == "chatgpt":
+        ...
 
 
-def save_access_token(name: LLM_PROVIDER, token_str: str):
+def save_access_token(name: LLM_PROVIDER, user: dict, token_str: str):
     if name == "chatgpt":
         try:
             path = Path(__file__).parent / "ChatgptAuth"
             if not path.exists():
                 path.mkdir()
-                path = path / "accessToken.json"
-                with open(path, 'w') as f:
-                    f.write(token_str)
-                    logger.info(f"success in saving {name} accessToken.json")
+            path = path / f"{user['EMAIL']}_accessToken.json"
+            with open(path, 'w') as f:
+                f.write(token_str)
+                logger.info(f"success in saving {user['EMAIL']}_accessToken.json")
         except Exception as e:
-            logger.error(f"failed in saving {name} accessToken.json\n", e)
+            logger.error(f"failed in saving {user['EMAIL']}_accessToken.json\n{type(e)}")
     if name == "bard":
         ...
 
 
-def get_cookies(name: LLM_PROVIDER) -> list[dict] | None:
+def get_cookies(name: LLM_PROVIDER, user: dict) -> list[dict] | None:
     if name == "chatgpt":
-        path = Path(__file__).parent / "ChatgptAuth" / "cookies.json"
+        path = Path(__file__).parent / "ChatgptAuth" / f"{user['EMAIL']}_cookies.json"
         if path.exists() and os.path.getsize(path) != 0:
             with open(path, 'r') as f:
                 try:
@@ -55,42 +57,45 @@ def get_cookies(name: LLM_PROVIDER) -> list[dict] | None:
                     logger.warning(f"decode Json cookies failed {e.msg}")
                     return None
         else:
-            raise NoSuchCookiesException()
+            raise NoSuchCookiesException("The file does not exist or is empty")
+    if name == "bard":
+        ...
 
 
-def save_cookies(name: LLM_PROVIDER, cookies: list[dict]):
+def save_cookies(name: LLM_PROVIDER, user: dict, cookies: list[dict]):
     if name == "chatgpt":
         try:
             path = Path(__file__).parent / "ChatgptAuth"
             if not path.exists():
                 path.mkdir()
-            path = path / "cookies.json"
+            path = path / f"{user['EMAIL']}_cookies.json"
             with open(path, 'w') as f:
                 json.dump(cookies, f)
-                logger.info(f"success in saving {name} cookies.json")
+                logger.info(f"success in saving {user['EMAIL']}_cookies.json")
         except Exception as e:
-            logger.error(f"failed in saving {name} cookies.json\n", e)
+            logger.error(f"failed in saving {user['EMAIL']}_cookies.json\n{type(e)}")
+    if name == "bard":
+        ...
+
+# def save_next_data(name: LLM_PROVIDER, next_data: str):
+#     if name == "chatgpt":
+#         try:
+#             path = Path(__file__).parent / "ChatgptAuth"
+#             if not path.exists():
+#                 path.mkdir()
+#                 path = path / "__NEXT_DATA__.json"
+#                 with open(path, 'w') as f:
+#                     f.write(next_data)
+#                     logger.info(f"success in saving {name} __NEXT_DATA__.json")
+#         except Exception as e:
+#             logger.error(f"failed in saving {name} __NEXT_DATA__.json\n", e)
 
 
-def save_next_data(name: LLM_PROVIDER, next_data: str):
-    if name == "chatgpt":
-        try:
-            path = Path(__file__).parent / "ChatgptAuth"
-            if not path.exists():
-                path.mkdir()
-                path = path / "__NEXT_DATA__.json"
-                with open(path, 'w') as f:
-                    f.write(next_data)
-                    logger.info(f"success in saving {name} __NEXT_DATA__.json")
-        except Exception as e:
-            logger.error(f"failed in saving {name} __NEXT_DATA__.json\n", e)
-
-
-def get_next_data(name: LLM_PROVIDER) -> str | None:
-    if name == "chatgpt":
-        try:
-            path = Path(__file__).parent / "ChatgptAuth" / "__NEXT_DATA__.json"
-            with open(path, 'r') as f:
-                return json.load(f)["buildId"]
-        except Exception as e:
-            logger.error(f"get  {name} __NEXT_DATA__.json failed error is {type(e)}")
+# def get_next_data(name: LLM_PROVIDER) -> str | None:
+#     if name == "chatgpt":
+#         try:
+#             path = Path(__file__).parent / "ChatgptAuth" / "__NEXT_DATA__.json"
+#             with open(path, 'r') as f:
+#                 return json.load(f)["buildId"]
+#         except Exception as e:
+#             logger.error(f"get  {name} __NEXT_DATA__.json failed error is {type(e)}")
