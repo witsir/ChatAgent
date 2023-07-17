@@ -167,3 +167,4 @@ cython_debug/
 /ChatAgent/user_agent_ua.in
 # .DS_Store files
 .DS_Store
+/tests/
