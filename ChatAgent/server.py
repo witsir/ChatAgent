@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from time import time
 from typing import Tuple
 from .chat_agent import ChatAgentPool
+from .log_handler import logger
 
 _system_prompt = """\
 You are a professional translation engine, \
@@ -41,14 +42,17 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
             post_data = self.rfile.read(content_length).decode("utf-8")
             prompt = json.loads(post_data)["messages"][1]["content"]
             response = _resp_data(SimpleHTTPRequestHandler.chat_agent_pool.ask_chat(_system_prompt + prompt))
-            # TODO BrokenPipeError: [Errno 32] Broken pipe
             self.send_response(200)
             self.send_header("Content-type", "application/json'")
             self.end_headers()
             self.wfile.write(response.encode())
-        except KeyboardInterrupt:
-            SimpleHTTPRequestHandler.chat_agent_pool.quit()
-            raise KeyboardInterrupt()
+        except BrokenPipeError:
+            print("[Errno 32] Broken pipe")
+        except Exception as e:
+            logger.warning(f"{type(e)}")
+        # except KeyboardInterrupt:
+        #     SimpleHTTPRequestHandler.chat_agent_pool.quit()
+        #     raise KeyboardInterrupt()
 
 
 class ThreadedHTTPServer(ThreadingHTTPServer):
@@ -74,9 +78,9 @@ class FakeChatgptApi:
             self.httpd.serve_forever()
         except KeyboardInterrupt:
             try:
+                print(f"\nServer will shut down...")
                 self.httpd.shutdown()
+                self.httpd.server_close()
                 self.chat_agent_pool.quit()
-            except ConnectionRefusedError:
-                print(f"Server is closed")
             except Exception as e:
-                print(f"{type(e)}")
+                logger.warning(f"{type(e)}")

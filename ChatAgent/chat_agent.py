@@ -180,12 +180,13 @@ class ChatgptAgent:
 
     def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
         self.is_keep_session = False
-        for conversation in self.register_conversations:
-            if conversation.is_echo:
-                self.fetch_conversation_history(conversation)
-        save_cookies("chatgpt", self.user, self.cookies)
-        if self.sl:
-            self.sl.get_driver.quit()
+        with self.lock:
+            for conversation in self.register_conversations:
+                if conversation.is_echo:
+                    self.fetch_conversation_history(conversation)
+            save_cookies("chatgpt", self.user, self.cookies)
+            if self.sl:
+                self.sl.get_driver.quit()
 
     @retry
     def fetch_conversation_history(self, conversation: ConversationAgent | None):
