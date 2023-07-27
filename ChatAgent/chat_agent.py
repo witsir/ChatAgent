@@ -14,7 +14,7 @@ from .config import config
 from .auth_handler import get_cookies, save_cookies, get_access_token
 from .conversation import ConversationAgent
 from .exceptions import NoSuchCookiesException, AccessTokenExpiredException, Requests403Error, Requests500Error, \
-    RequestsError, AuthenticationTokenExpired
+    RequestsError, AuthenticationTokenExpired, ChallengeRequiredError
 from .headers import get_headers_for_moderations, get_headers_for_conversation, get_headers_for_new_conversation, \
     keep_session, get_headers_for_fetch_conversations
 from .log_handler import logger
@@ -333,6 +333,10 @@ class ChatgptAgent:
                 return self._complete_conversation(conversation, headers, content_parts=content_parts, is_continue=True)
             else:
                 raise Requests403Error(message=f"{self.user['EMAIL']} | [Status Code] {response.status_code}")
+        elif response.status_code == 418:
+            logger.warning(
+                f"{self.user['EMAIL']} | [Status Code] {response.status_code} | [Response Text]\n{response.text}")
+            raise ChallengeRequiredError(message=f"{self.user['EMAIL']} | [Status Code] {response.status_code}")
         elif response.status_code >= 500:
             logger.warning(
                 f"{self.user['EMAIL']} | [Status Code] {response.status_code} | [Response Text] {response.text}")
@@ -367,9 +371,20 @@ class ChatgptAgent:
                     f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
                 self._update_cookies_again(False)
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
+            except ChallengeRequiredError as e:
+                logger.warning(
+                    f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
+                self.session = requests.Session()
+                proxies = {'http': "http://localhost:7890", 'https': "http://localhost:7890"}
+                self.session.proxies.update(proxies)
+                self._update_cookies_again(False)
+                return self._complete_conversation(self._current_conversation, headers, conversation_playload)
+
             except AuthenticationTokenExpired as e:
                 logger.warning(
                     f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
+                if not self.sl:
+                    self.sl = SeleniumRequests(self.user)
                 self.sl.chatgpt_login()
                 self.cookies, self.access_token = self.sl.fetch_access_token_cookies(True)
                 self.session.cookies.update(

@@ -17,7 +17,7 @@ import requests
 #                 instance = super().__call__(*args, **kwargs)
 #                 cls._instances[cls] = instance
 #         return cls._instances[cls]
-from .exceptions import Requests500Error, RequestsError, Requests403Error
+from .exceptions import Requests500Error, RequestsError, Requests403Error, RetryFailed
 
 
 class SingletonMeta(type):
@@ -68,11 +68,11 @@ def retry(
                 num_retries += 1
                 # Check if max retries has been reached
                 if num_retries > max_retries:
-                    # raise RetryFailed(
-                    #     f"Maximum number of retries ({max_retries}) exceeded. Last Exception {exception_type}"
-                    # )
-                    print(f"Maximum number of retries {max_retries} exceeded. Last Exception {e}")
-                    return "none"
+                    raise RetryFailed(
+                        f"Maximum number of retries ({max_retries}) exceeded. Last Exception {type(e)}"
+                    )
+                    # print(f"Maximum number of retries {max_retries} exceeded. Last Exception {e}")
+                    # return "none"
                 # Increment the delay
                 delay *= exponential_base * (1 + jitter * random.random())
 

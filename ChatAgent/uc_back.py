@@ -180,6 +180,8 @@ class SeleniumRequests:
             return cookies
 
     def chatgpt_login(self):
+        self.driver.get('https://chat.openai.com')
+        self.driver.delete_all_cookies()
         self.driver.get('https://chat.openai.com/auth/login')
         if not config["USER_AGENT_UA"] and self.driver.patcher.version_main != config["USER_AGENT_UA"]["version_main"]:
             config.setdefault("USER_AGENT_UA", self._get_user_agent_ua())

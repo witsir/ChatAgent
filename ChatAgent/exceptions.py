@@ -52,6 +52,15 @@ class Requests403Error(Exception):
         return f"Requests403Error: {self.message}"
 
 
+class ChallengeRequiredError(Exception):
+    def __init__(self, message="Client challenge required"):
+        self.message = message
+        super().__init__(self.message)
+
+    def __str__(self):
+        return f"challenge_required: {self.message}"
+
+
 class Requests500Error(Exception):
     def __init__(self, message="Request 500"):
         self.message = message
