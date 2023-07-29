@@ -14,11 +14,12 @@ from .config import config
 from .exceptions import HandleCloudflareFailException, UseSeleniumFailedException
 from .log_handler import logger
 
-# hook fetch_package to fix a download error, you may not need this
-if config["ACCOUNTS"][0]["EMAIL"][:3] == "yud":
-    from .utils import download_file
 
-    uc.Patcher.fetch_package = download_file
+# hook fetch_package to fix a download error, you may not need this
+# if config["ACCOUNTS"][0]["EMAIL"][:3] == "yud":
+#     from .utils import download_file
+#
+#     uc.Patcher.fetch_package = download_file
 
 
 class SeleniumRequests:
@@ -37,16 +38,16 @@ class SeleniumRequests:
     def _get_user_agent_ua(self):
         sec_ch_ua = self.driver.execute_script("return navigator.userAgentData.toJSON();")
         user_agent = self.driver.execute_script("return navigator.userAgent;")
-        logger.info(f"success in getting sec_ch_ua and user_agent")
         user_agent_ua = {
-            "version_main": self.driver.patcher.version_main,
+            "version_main": self.driver.capabilities['browserVersion'].split(".")[0],
             "Sec-Ch-Ua": ", ".join(
                 f'"{sec_ch_ua["brands"][i]["brand"]}";v="{sec_ch_ua["brands"][i]["version"]}"' for i in
                 range(len(sec_ch_ua["brands"]))),
             "User-Agent": user_agent}
+        logger.info(f"success in getting user_agent_ua\n{user_agent_ua}")
         path = Path(__file__).parent / "user_agent_ua.in"
         with open(path, "w") as f:
-            f.write(str(user_agent_ua["version_main"]) + "\n")
+            f.write(user_agent_ua["version_main"] + "\n")
             f.write(user_agent_ua["User-Agent"] + "\n")
             f.write(user_agent_ua["Sec-Ch-Ua"])
         return user_agent_ua
@@ -173,18 +174,19 @@ class SeleniumRequests:
         save_cookies("chatgpt", self.user, cookies)
         if auth_again:
             json_text = self.driver.find_element(By.TAG_NAME, 'pre').text
-            logger.info(f"Fetch https://chat.openai.com/api/auth/session ACCESS_TOKEN\n{json_text}")
+            logger.info(f"Fetch https://chat.openai.com/api/auth/session ACCESS_TOKEN\n... {json_text[-140:]}")
             save_access_token("chatgpt", self.user, json_text)
             return cookies, json.loads(json_text)["accessToken"]
         else:
             return cookies
 
-    def chatgpt_login(self):
+    def chatgpt_login(self) -> tuple[list[dict], str] | list[dict]:
         self.driver.get('https://chat.openai.com')
         self.driver.delete_all_cookies()
         self.driver.get('https://chat.openai.com/auth/login')
-        if not config["USER_AGENT_UA"] and self.driver.patcher.version_main != config["USER_AGENT_UA"]["version_main"]:
-            config.setdefault("USER_AGENT_UA", self._get_user_agent_ua())
+        if (not config["USER_AGENT_UA"]) or (int(self.driver.capabilities['browserVersion'].split(".")[0]) !=
+                                             config["USER_AGENT_UA"]["version_main"]):
+            config["USER_AGENT_UA"] = self._get_user_agent_ua()
         try:
             if not self._handle_cloudflare_click() == "login":
                 # retry once again
@@ -196,18 +198,18 @@ class SeleniumRequests:
 
         # 处理登录时的弹窗
         if self._handle_welcome_click():
-            self.fetch_access_token_cookies(True)
-            return self.driver
+            return self.fetch_access_token_cookies(True)
         else:
             raise UseSeleniumFailedException()
 
-    def chatgpt_log_with_cookies(self):
+    def chatgpt_log_with_cookies(self) -> tuple[list[dict], str] | list[dict]:
         cookies_ = get_cookies("chatgpt", self.user)
         if not cookies_:
             return self.chatgpt_login()
         self.driver.get('https://chat.openai.com')
-        if not config["USER_AGENT_UA"] and self.driver.patcher.version_main != config["USER_AGENT_UA"]["version_main"]:
-            config.setdefault("USER_AGENT_UA", self._get_user_agent_ua())
+        if (not config["USER_AGENT_UA"]) or (int(self.driver.capabilities['browserVersion'].split(".")[0]) !=
+                                             config["USER_AGENT_UA"]["version_main"]):
+            config["USER_AGENT_UA"] = self._get_user_agent_ua()
         for cookie in cookies_:
             try:
                 if cookie["name"] == "__Secure-next-auth.session-token" and cookie["expiry"] < int(time.time()):
@@ -238,7 +240,6 @@ class SeleniumRequests:
             self._handle_login(self.user["EMAIL"], self.user["PASSWORD"])
             get_to = self._handle_welcome_click()
         if "prompt-textarea" == get_to:
-            self.fetch_access_token_cookies(True)
-            return self.driver
+            return self.fetch_access_token_cookies(True)
         else:
             raise UseSeleniumFailedException()

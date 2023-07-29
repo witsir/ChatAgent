@@ -64,7 +64,8 @@ def _list_local_conversations_id(user: dict) -> list[str]:
 
 
 class ChatgptAgent:
-    def __init__(self, user: dict, conversation: ConversationAgent | str | None,
+    def __init__(self, user: dict,
+                 conversation: ConversationAgent | str | None = None,
                  is_keep_session: bool = False,
                  proxies: dict[str, str] = None):
         self.user = user
@@ -262,15 +263,18 @@ class ChatgptAgent:
     def _update_cookies_again(self, auth_again: bool = False):
         if not self.sl:
             self.sl = SeleniumRequests(self.user)
-            self.sl.chatgpt_log_with_cookies()
-        if auth_again:
-            self.cookies, self.access_token = self.sl.fetch_access_token_cookies(auth_again)
+            self.cookies, self.access_token = self.sl.chatgpt_log_with_cookies()
             self.session.cookies.update(
                 cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
         else:
-            self.cookies = self.sl.fetch_access_token_cookies(False)
-            self.session.cookies.update(
-                cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
+            if auth_again:
+                self.cookies, self.access_token = self.sl.fetch_access_token_cookies(True)
+                self.session.cookies.update(
+                    cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
+            else:
+                self.cookies = self.sl.fetch_access_token_cookies(False)
+                self.session.cookies.update(
+                    cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
 
     @retry
     def _complete_conversation(self,
@@ -306,7 +310,7 @@ class ChatgptAgent:
                 logger.info(f"SUCCESS: Get data from {conversation.user['EMAIL']}\n"
                             f"{last_data[parts_start:parts_start + 100]}"
                             "...\n"
-                            f"{last_data[end_turn_start:end_turn_start + 100]}"
+                            f"{last_data[end_turn_start:end_turn_start + 140]}"
                             "...")
             except JSONDecodeError:
                 logger.error(F"Encounter a JSONDecodeError, Check local conversation memorized")
@@ -371,22 +375,14 @@ class ChatgptAgent:
                     f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
                 self._update_cookies_again(False)
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
-            except ChallengeRequiredError as e:
-                logger.warning(
-                    f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
-                self.session = requests.Session()
-                proxies = {'http': "http://localhost:7890", 'https': "http://localhost:7890"}
-                self.session.proxies.update(proxies)
-                self._update_cookies_again(False)
-                return self._complete_conversation(self._current_conversation, headers, conversation_playload)
-
             except AuthenticationTokenExpired as e:
                 logger.warning(
                     f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
                 if not self.sl:
                     self.sl = SeleniumRequests(self.user)
-                self.sl.chatgpt_login()
-                self.cookies, self.access_token = self.sl.fetch_access_token_cookies(True)
+                    self.cookies, self.access_token = self.sl.chatgpt_login()
+                else:
+                    self.cookies, self.access_token = self.sl.fetch_access_token_cookies(True)
                 self.session.cookies.update(
                     cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
                 if not self._current_conversation.is_new_conversation:
@@ -394,6 +390,11 @@ class ChatgptAgent:
                                                            self._current_conversation.conversation_id)
                 else:
                     headers = get_headers_for_new_conversation(self.access_token)
+                return self._complete_conversation(self._current_conversation, headers, conversation_playload)
+            except ChallengeRequiredError as e:
+                logger.warning(
+                    f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
+                self._update_cookies_again(False)
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
 
 

@@ -5,7 +5,7 @@ def get_headers_for_conversation(access_token: str, conversation_id: str) -> dic
     return {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {access_token}',
-        'Accept': 'text/event-stream; charset=utf-8',
+        'Accept': 'text/event-stream',
         'Referer': f'https://chat.openai.com/c/{conversation_id}',
         'Origin': 'https://chat.openai.com',
         'User-Agent': config["USER_AGENT_UA"]["User-Agent"],
@@ -17,7 +17,7 @@ def get_headers_for_new_conversation(access_token: str) -> dict:
     return {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {access_token}',
-        'Accept': 'text/event-stream; charset=utf-8',
+        'Accept': 'text/event-stream',
         'Referer': f'https://chat.openai.com/?model=text-davinci-002-render-sha',
         'Origin': 'https://chat.openai.com',
         'User-Agent': config["USER_AGENT_UA"]["User-Agent"],

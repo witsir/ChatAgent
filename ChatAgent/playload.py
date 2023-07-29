@@ -25,8 +25,7 @@ def get_request_conversation_playload(prompt: str,
         'model': 'text-davinci-002-render-sha',
         'timezone_offset_min': -480,
         'history_and_training_disabled': False,
-        'arkose_token': None,
-        'supports_modapi': False
+        'arkose_token': None
     })
 
 
@@ -39,8 +38,7 @@ def get_continue_conversation_playload(conversation_id: str,
          'model': 'text-davinci-002-render-sha',
          'timezone_offset_min': -480,
          'history_and_training_disabled': False,
-         'arkose_token': None,
-         'supports_modapi': False}
+         'arkose_token': None}
     )
 
 
@@ -57,6 +55,5 @@ def get_new_conversation_playload(prompt: str,
         'model': 'text-davinci-002-render-sha',
         'timezone_offset_min': -480,
         'history_and_training_disabled': False,
-        'arkose_token': None,
-        'supports_modapi': False
+        'arkose_token': None
     })
