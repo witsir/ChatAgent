@@ -308,9 +308,9 @@ class ChatgptAgent:
                 parts_start = last_data.find("parts") - 1
                 end_turn_start = last_data.find("end_turn") - 1
                 logger.info(f"SUCCESS: Get data from {conversation.user['EMAIL']}\n"
-                            f"{last_data[parts_start:parts_start + 100]}"
+                            f"{last_data.encode('utf-8').decode('unicode_escape')[parts_start:parts_start + 50]}"
                             "...\n"
-                            f"{last_data[end_turn_start:end_turn_start + 140]}"
+                            f"{last_data[end_turn_start:end_turn_start + 129]}"
                             "...")
             except JSONDecodeError:
                 logger.error(F"Encounter a JSONDecodeError, Check local conversation memorized")
@@ -370,7 +370,7 @@ class ChatgptAgent:
                 self._keep_session()
             try:
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
-            except Requests403Error as e:
+            except (Requests403Error, ChallengeRequiredError) as e:
                 logger.warning(
                     f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
                 self._update_cookies_again(False)
@@ -391,11 +391,11 @@ class ChatgptAgent:
                 else:
                     headers = get_headers_for_new_conversation(self.access_token)
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
-            except ChallengeRequiredError as e:
-                logger.warning(
-                    f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
-                self._update_cookies_again(False)
-                return self._complete_conversation(self._current_conversation, headers, conversation_playload)
+            # except ChallengeRequiredError as e:
+            #     logger.warning(
+            #         f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
+            #     self._update_cookies_again(False)
+            #     return self._complete_conversation(self._current_conversation, headers, conversation_playload)
 
 
 class ChatAgentPool(metaclass=SingletonMeta):

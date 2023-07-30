@@ -48,13 +48,8 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(response.encode())
         except BrokenPipeError:
             print("[Errno 32] Broken pipe")
-
         except Exception as e:
             logger.exception(e)
-            logger.warning(f"{type(e)}")
-        # except KeyboardInterrupt:
-        #     SimpleHTTPRequestHandler.chat_agent_pool.quit()
-        #     raise KeyboardInterrupt()
 
 
 class ThreadedHTTPServer(ThreadingHTTPServer):
