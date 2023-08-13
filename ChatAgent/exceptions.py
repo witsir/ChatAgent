@@ -43,13 +43,13 @@ class UseSeleniumFailedException(Exception):
         return f"UseSeleniumFailedException: {self.message}"
 
 
-class Requests403Error(Exception):
-    def __init__(self, message="Request 403"):
+class Requests4XXError(Exception):
+    def __init__(self, message="Request 4XX"):
         self.message = message
         super().__init__(self.message)
 
     def __str__(self):
-        return f"Requests403Error: {self.message}"
+        return f"Requests4XXError: {self.message}"
 
 
 class ChallengeRequiredError(Exception):

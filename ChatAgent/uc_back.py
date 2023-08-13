@@ -14,7 +14,6 @@ from .config import config
 from .exceptions import HandleCloudflareFailException, UseSeleniumFailedException
 from .log_handler import logger
 
-
 # hook fetch_package to fix a download error, you may not need this
 # if config["ACCOUNTS"][0]["EMAIL"][:3] == "yud":
 #     from .utils import download_file
@@ -22,10 +21,17 @@ from .log_handler import logger
 #     uc.Patcher.fetch_package = download_file
 
 
+def _get_driver_executable_path():
+    driver_executable_path = Path(uc.Patcher.data_path) / "undetected_chromedriver"
+    return driver_executable_path if driver_executable_path.exists() else None
+
+
 class SeleniumRequests:
 
     def __init__(self, user: dict, headless: bool = not config["DEBUG"]):
-        self.driver = uc.Chrome(headless=headless)
+        self.driver = uc.Chrome(
+            driver_executable_path=_get_driver_executable_path(),
+            headless=headless)
         self.user = user
         self._wait15 = WebDriverWait(self.driver, 15)
         self._wait25 = WebDriverWait(self.driver, 25)
@@ -124,7 +130,8 @@ class SeleniumRequests:
             EC.element_to_be_clickable((By.XPATH, '//button/div[text()="Log in"]'))
         )
         el_button.click()
-
+        el_button.click()
+        self.driver.delete_all_cookies()
         # 输入Email
         el_email_input = self._wait25.until(
             EC.presence_of_element_located((By.XPATH, '//input[@inputmode="email"]'))
@@ -179,6 +186,11 @@ class SeleniumRequests:
             return cookies, json.loads(json_text)["accessToken"]
         else:
             return cookies
+
+    def touch_conversation(self):
+        self.driver.get("https://chat.openai.com/?model=text-davinci-002-render-sha")
+        self.driver.find_element(By.XPATH, '//textarea[@id="prompt-textarea"]').send_keys("hello\ue007")
+        time.sleep(1)
 
     def chatgpt_login(self) -> tuple[list[dict], str] | list[dict]:
         self.driver.get('https://chat.openai.com')

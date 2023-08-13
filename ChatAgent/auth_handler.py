@@ -26,7 +26,7 @@ def get_access_token(name: LLM_PROVIDER, user: dict) -> str:
                     raise AccessTokenExpiredException("AccessToken Expired")
         else:
             raise AccessTokenExpiredException("AccessToken not Found")
-    if name == "chatgpt":
+    if name == "bard":
         ...
 
 
@@ -54,10 +54,10 @@ def get_cookies(name: LLM_PROVIDER, user: dict) -> list[dict] | None:
                 try:
                     return json.load(f)
                 except JSONDecodeError as e:
-                    logger.warning(f"decode Json cookies failed {e.msg}")
+                    logger.warning(f"decode {user['EMAIL']}_cookies.json failed {e.msg}")
                     return None
         else:
-            raise NoSuchCookiesException("The file does not exist or is empty")
+            raise NoSuchCookiesException(f"{user['EMAIL']}_cookies.json is missing or empty")
     if name == "bard":
         ...
 

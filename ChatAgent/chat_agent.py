@@ -1,22 +1,22 @@
 import json
 import re
 import threading
-import uuid
-from pathlib import Path
-
 import time
+import uuid
 from json import JSONDecodeError
+from pathlib import Path
 
 import requests
 from requests.utils import cookiejar_from_dict
+from certifi import where
 
-from .config import config
 from .auth_handler import get_cookies, save_cookies, get_access_token
+from .config import config
 from .conversation import ConversationAgent
-from .exceptions import NoSuchCookiesException, AccessTokenExpiredException, Requests403Error, Requests500Error, \
-    RequestsError, AuthenticationTokenExpired, ChallengeRequiredError
+from .exceptions import NoSuchCookiesException, AccessTokenExpiredException, Requests4XXError, Requests500Error, \
+    RequestsError, AuthenticationTokenExpired
 from .headers import get_headers_for_moderations, get_headers_for_conversation, get_headers_for_new_conversation, \
-    keep_session, get_headers_for_fetch_conversations
+    keep_session, get_headers_for_fetch_conversation, get_headers_for_fetch_conversation_list
 from .log_handler import logger
 from .playload import get_request_conversation_playload, \
     get_new_conversation_playload, get_continue_conversation_playload
@@ -70,9 +70,10 @@ class ChatgptAgent:
                  proxies: dict[str, str] = None):
         self.user = user
         self.sl = None
-        self.session = self._prepare_session(proxies)
         self.cookies = self.get_cookies()
+
         self.access_token = self.get_access_token()
+        self.session = self._prepare_session(proxies)
         self.is_keep_session = is_keep_session
         self.register_conversations = set()
         if type(conversation) == str:
@@ -104,11 +105,14 @@ class ChatgptAgent:
 
     def _wrapper_session_get(self):
         while self.is_keep_session:
-            time.sleep(300)
-            response = self.session.get("https://chat.openai.com/api/auth/session",
-                                        headers=keep_session(self._current_conversation.conversation_id))
-            logger.info(f"keep_session get method return")
-            _update_cookies(self.session, response, self.cookies)
+            r = self.session.get("https://chat.openai.com/api/auth/session",
+                                 headers=keep_session(self._current_conversation.conversation_id))
+            if r.status_code == 200:
+                logger.info(f"{self.user['EMAIL']} keep_session get method return")
+                _update_cookies(self.session, r, self.cookies)
+            else:
+                logger.info(f"{self.user['EMAIL']} keep_session failed")
+            time.sleep(900)
 
     @retry
     def rename_conversation_title(self, name: str, conversation: ConversationAgent | None) -> bool:
@@ -135,7 +139,7 @@ class ChatgptAgent:
                 f"FAILED: Rename conversation, [Status Code] {response.status_code} | [Response Text]\n{response.text}")
             raise RequestsError(f"Requests {response.status_code}")
 
-    def del_conversation_local(self, conversation_id: str):
+    def del_conversation_local(self, conversation_id: str | None = None):
         if not conversation_id:
             conversation_id = self._current_conversation.conversation_id
         path = Path(__file__).parent / "conversations" / f"{self.user['EMAIL']}" / f"{conversation_id}.json"
@@ -144,7 +148,7 @@ class ChatgptAgent:
             logger.info(f"local {self.user['EMAIL']}/{conversation_id}.json deleted")
 
     @retry
-    def del_conversation_remote(self, conversation_id: str | None):
+    def del_conversation_remote(self, conversation_id: str | None = None):
         payload = json.dumps({"is_visible": False})
         if not conversation_id:
             conversation_id = self._current_conversation.conversation_id
@@ -179,24 +183,48 @@ class ChatgptAgent:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
+    def __exit__(self, del_cov: bool = True, exc_type=None, exc_val=None, exc_tb=None):
         self.is_keep_session = False
         with self.lock:
             for conversation in self.register_conversations:
                 if conversation.is_echo:
-                    self.fetch_conversation_history(conversation)
+                    if del_cov:
+                        self.del_conversation_local()
+                        self.del_conversation_remote()
+                    else:
+                        if conversation.is_echo:
+                            self.fetch_conversation_history(conversation)
+            self.session.close()
             save_cookies("chatgpt", self.user, self.cookies)
             if self.sl:
                 self.sl.get_driver.quit()
 
     @retry
-    def fetch_conversation_history(self, conversation: ConversationAgent | None):
+    def list_conversations_remote(self) -> dict:
+        try:
+            response = self.session.get(
+                url="https://chat.openai.com/backend-api/conversations?offset=0&limit=28&order=updated",
+                headers=get_headers_for_fetch_conversation_list(self.access_token))
+        except Exception as e:
+            raise RequestsError(f"{type(e)}")
+        if response.status_code == 200:
+            logger.info(f"SUCCESS: List conversations\n{response}")
+            return response.json()
+        elif response.status_code == 403:
+            logger.warning(f"FAILED: List conversations [Status Code] | {response.status_code}")
+            self._update_cookies_again()
+            return self.list_conversations_remote()
+        else:
+            raise RequestsError(f"FAILED: List conversations {response.status_code}")
+
+    @retry
+    def fetch_conversation_history(self, conversation: ConversationAgent | str | None):
         if not conversation:
             conversation = self._current_conversation
         try:
             response = self.session.get(
                 url=f"https://chat.openai.com/backend-api/conversation/{conversation.conversation_id}",
-                headers=get_headers_for_fetch_conversations(self.access_token, conversation.conversation_id))
+                headers=get_headers_for_fetch_conversation(self.access_token, conversation.conversation_id))
         except Exception as e:
             raise RequestsError(f"{type(e)}")
         if response.status_code == 200:
@@ -208,8 +236,8 @@ class ChatgptAgent:
         else:
             raise RequestsError(f"Requests {response.status_code}")
 
-    def quit(self):
-        self.__exit__()
+    def quit(self, del_cov: bool = True):
+        self.__exit__(del_cov)
 
     def get_cookies(self):
         try:
@@ -217,8 +245,8 @@ class ChatgptAgent:
         except NoSuchCookiesException as e:
             logger.warning(f"{e.message}. Will use Selenium next.")
             self.sl = SeleniumRequests(self.user)
-            self.sl.chatgpt_login()
-            return get_cookies("chatgpt", self.user)
+            cookies, _ = self.sl.chatgpt_login()
+            return cookies
 
     def get_access_token(self) -> str | None:
         try:
@@ -226,23 +254,24 @@ class ChatgptAgent:
         except AccessTokenExpiredException as e:
             logger.warning(f"{e.message}. Will use Selenium next.")
             self.sl = SeleniumRequests(self.user)
-            self.sl.chatgpt_login()
-            return get_access_token("chatgpt", self.user)
+            self.cookies, access_token = self.sl.chatgpt_login()
+            return access_token
         except Exception as e:
             logger.error(f"{type(e)}")
             return None
 
     def _update_cookies_for_requests(self, session: requests.Session) -> requests.Session:
-        cookies_ = {cookie['name']: cookie['value'] for cookie in get_cookies("chatgpt", self.user)}
+        cookies_ = {cookie['name']: cookie['value']
+                    for cookie in self.cookies if cookie['name'] != "__Host-next-auth.csrf-token"}
         cookiejar = cookiejar_from_dict(cookies_)
         session.cookies.update(cookiejar)
         return session
 
-    def _prepare_session(self, proxies: dict[str, str] | None) -> requests.Session:
+    def _prepare_session(self, proxies: dict[str, str] | None = None) -> requests.Session:
         session = requests.Session()
-        if not proxies:
-            proxies = {'http': "http://localhost:7890", 'https': "http://localhost:7890"}
-        session.proxies.update(proxies)
+        # if not proxies:
+        #     proxies = {'http': "socks5://127.0.0.1:7890", 'https': "socks5://127.0.0.1:7890"}
+        # session.proxies.update(proxies)
         try:
             return self._update_cookies_for_requests(session)
         except NoSuchCookiesException as e:
@@ -251,30 +280,18 @@ class ChatgptAgent:
             self.sl.chatgpt_login()
             return self._update_cookies_for_requests(session)
 
-    # def _pass_moderations(self, conversation_id: str, prompt: str, message_id: str):
-    #     try:
-    #         self.session.post(
-    #             "https://chat.openai.com/backend-api/moderations",
-    #             headers=get_headers_for_moderations(self.access_token, conversation_id),
-    #             data=get_request_moderations_playload(prompt, conversation_id, message_id))
-    #     except AccessTokenExpiredException:
-    #         return
-
     def _update_cookies_again(self, auth_again: bool = False):
         if not self.sl:
             self.sl = SeleniumRequests(self.user)
             self.cookies, self.access_token = self.sl.chatgpt_log_with_cookies()
-            self.session.cookies.update(
-                cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
+            self._update_cookies_for_requests(self.session)
         else:
             if auth_again:
                 self.cookies, self.access_token = self.sl.fetch_access_token_cookies(True)
-                self.session.cookies.update(
-                    cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
+                self._update_cookies_for_requests(self.session)
             else:
                 self.cookies = self.sl.fetch_access_token_cookies(False)
-                self.session.cookies.update(
-                    cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
+                self._update_cookies_for_requests(self.session)
 
     @retry
     def _complete_conversation(self,
@@ -286,20 +303,22 @@ class ChatgptAgent:
         if is_continue:
             playload = get_continue_conversation_playload(conversation.conversation_id, conversation.current_node)
         try:
-            response = self.session.post(
+            r = self.session.post(
                 "https://chat.openai.com/backend-api/conversation",
                 headers=headers,
                 data=playload,
-                stream=True
+                stream=True,
+                # allow_redirects=False,
+                verify=where()
             )
         except Exception as e:
             raise RequestsError(f"{type(e)}")
 
-        if response.status_code == 200:
-            if len(response.cookies) != 0:
-                _update_cookies(self.session, response, self.cookies)
+        if r.status_code == 200:
+            if len(r.cookies) != 0:
+                _update_cookies(self.session, r, self.cookies)
             iter_line = None
-            for line in response.iter_lines():
+            for line in r.iter_lines():
                 if line[7:11] != b"DONE" and line[7:11] == b'"mes':
                     iter_line = line
             try:
@@ -326,29 +345,20 @@ class ChatgptAgent:
                 return content_parts
             else:
                 return self._complete_conversation(conversation, headers, content_parts=content_parts, is_continue=True)
-        elif response.status_code == 401:
-            logger.warning(
-                f"{self.user['EMAIL']} | [Status Code] {response.status_code} | [Response Text]\n{response.text}")
-            raise AuthenticationTokenExpired(message=f"{self.user['EMAIL']} | [Status Code] {response.status_code}")
-        elif response.status_code == 403:
-            logger.warning(f"{self.user['EMAIL']} | [Status Code] {response.status_code}")
+        elif 400 <= r.status_code < 500:
             if is_continue:
+                logger.warning(f"{self.user['EMAIL']} | [Status Code] {r.status_code}")
                 self._update_cookies_again(False)
                 return self._complete_conversation(conversation, headers, content_parts=content_parts, is_continue=True)
             else:
-                raise Requests403Error(message=f"{self.user['EMAIL']} | [Status Code] {response.status_code}")
-        elif response.status_code == 418:
-            logger.warning(
-                f"{self.user['EMAIL']} | [Status Code] {response.status_code} | [Response Text]\n{response.text}")
-            raise ChallengeRequiredError(message=f"{self.user['EMAIL']} | [Status Code] {response.status_code}")
-        elif response.status_code >= 500:
-            logger.warning(
-                f"{self.user['EMAIL']} | [Status Code] {response.status_code} | [Response Text] {response.text}")
-            raise Requests500Error(message=f"Request {response.status_code}")
+                raise Requests4XXError(
+                    message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text] {r.text}")
+        elif r.status_code >= 500:
+            raise Requests500Error(
+                message=f"{self.user['EMAIL']} | {r.status_code} | [Response Text] {r.text}")
         else:
-            logger.error(
-                f"{self.user['EMAIL']} | [Status Code] {response.status_code} | [Response Text] {response.text}")
-            raise RequestsError(message=f"{self.user['EMAIL']} | [Status Code] {response.status_code}")
+            raise RequestsError(
+                message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text] {r.text}")
 
     def ask_chat(self, prompt: str) -> str | None:
         with self.lock:
@@ -366,11 +376,11 @@ class ChatgptAgent:
                 headers = get_headers_for_new_conversation(self.access_token)
             if not self._current_conversation.is_echo:
                 self.register_conversations.add(self._current_conversation)
-            if self.is_keep_session and not self.start_keep_session:
+            if self.is_keep_session and (not self.start_keep_session):
                 self._keep_session()
             try:
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
-            except (Requests403Error, ChallengeRequiredError) as e:
+            except Requests4XXError as e:
                 logger.warning(
                     f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
                 self._update_cookies_again(False)
@@ -391,24 +401,20 @@ class ChatgptAgent:
                 else:
                     headers = get_headers_for_new_conversation(self.access_token)
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
-            # except ChallengeRequiredError as e:
-            #     logger.warning(
-            #         f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
-            #     self._update_cookies_again(False)
-            #     return self._complete_conversation(self._current_conversation, headers, conversation_playload)
 
 
 class ChatAgentPool(metaclass=SingletonMeta):
     def __init__(self, conversation_list: list[str, None] | None = None):
         if not conversation_list:
-            conversation_list = [None, None, None]
-        self.instances = [ChatgptAgent(u, conversation_list[i]) for i, u in enumerate(config["ACCOUNTS"])]
+            conversation_list = [None] * len(config["ACCOUNTS"])
+        self.instances = [ChatgptAgent(u, conversation_list[i]) for i, u in
+                          enumerate(config["ACCOUNTS"])]
         self.count = -1
 
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type=None, exc_val=None, exc_tb=None):
+    def __exit__(self, del_cov: bool = True, exc_type=None, exc_val=None, exc_tb=None):
         threads = []
         for ins in self.instances:
             t = threading.Thread(target=ins.quit)
@@ -417,9 +423,9 @@ class ChatAgentPool(metaclass=SingletonMeta):
         for t in threads:
             t.join()
 
-    def quit(self):
-        self.__exit__()
+    def quit(self, del_cov: bool = True):
+        self.__exit__(del_cov)
 
     def ask_chat(self, prompt: str):
         self.count += 1
-        return self.instances[self.count % 3].ask_chat(prompt)
+        return self.instances[self.count % len(self.instances)].ask_chat(prompt)
