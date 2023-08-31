@@ -196,8 +196,8 @@ class ChatgptAgent:
                             self.fetch_conversation_history(conversation)
             self.session.close()
             save_cookies("chatgpt", self.user, self.cookies)
-            if self.sl:
-                self.sl.get_driver.quit()
+            # if self.sl:
+            #     self.sl.get_driver.close()
 
     @retry
     def list_conversations_remote(self) -> dict:
@@ -236,7 +236,7 @@ class ChatgptAgent:
         else:
             raise RequestsError(f"Requests {response.status_code}")
 
-    def quit(self, del_cov: bool = True):
+    def close(self, del_cov: bool = True):
         self.__exit__(del_cov)
 
     def get_cookies(self):
@@ -269,9 +269,9 @@ class ChatgptAgent:
 
     def _prepare_session(self, proxies: dict[str, str] | None = None) -> requests.Session:
         session = requests.Session()
-        # if not proxies:
-        #     proxies = {'http': "socks5://127.0.0.1:7890", 'https': "socks5://127.0.0.1:7890"}
-        # session.proxies.update(proxies)
+        if not proxies:
+            proxies = {'http': "socks5://127.0.0.1:7890", 'https': "socks5://127.0.0.1:7890"}
+        session.proxies.update(proxies)
         try:
             return self._update_cookies_for_requests(session)
         except NoSuchCookiesException as e:
@@ -352,7 +352,8 @@ class ChatgptAgent:
                 return self._complete_conversation(conversation, headers, content_parts=content_parts, is_continue=True)
             else:
                 raise Requests4XXError(
-                    message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text] {r.text}")
+                    message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
+                            f"{r.text[0:130]}...")
         elif r.status_code >= 500:
             raise Requests500Error(
                 message=f"{self.user['EMAIL']} | {r.status_code} | [Response Text] {r.text}")
@@ -382,12 +383,12 @@ class ChatgptAgent:
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
             except Requests4XXError as e:
                 logger.warning(
-                    f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
+                    f"{e.message}\n{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
                 self._update_cookies_again(False)
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
             except AuthenticationTokenExpired as e:
                 logger.warning(
-                    f"{e.message}，{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
+                    f"{e.message}\n{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
                 if not self.sl:
                     self.sl = SeleniumRequests(self.user)
                     self.cookies, self.access_token = self.sl.chatgpt_login()
@@ -417,13 +418,17 @@ class ChatAgentPool(metaclass=SingletonMeta):
     def __exit__(self, del_cov: bool = True, exc_type=None, exc_val=None, exc_tb=None):
         threads = []
         for ins in self.instances:
-            t = threading.Thread(target=ins.quit)
+            t = threading.Thread(target=ins.close)
             threads.append(t)
             t.start()
         for t in threads:
             t.join()
+        for ins in self.instances:
+            if ins.sl:
+                ins.sl.get_driver.quit()
+        # self.instances[len(self.instances)-1].sl.get_driver.quit()
 
-    def quit(self, del_cov: bool = True):
+    def close(self, del_cov: bool = True):
         self.__exit__(del_cov)
 
     def ask_chat(self, prompt: str):

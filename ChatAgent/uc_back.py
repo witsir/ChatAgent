@@ -15,14 +15,14 @@ from .exceptions import HandleCloudflareFailException, UseSeleniumFailedExceptio
 from .log_handler import logger
 
 # hook fetch_package to fix a download error, you may not need this
-# if config["ACCOUNTS"][0]["EMAIL"][:3] == "yud":
-#     from .utils import download_file
-#
-#     uc.Patcher.fetch_package = download_file
+if config["ACCOUNTS"][0]["EMAIL"][:3] == "wit":
+    from .utils import download_file
+
+    uc.Patcher.fetch_package = download_file
 
 
 def _get_driver_executable_path():
-    driver_executable_path = Path(uc.Patcher.data_path) / "undetected_chromedriver"
+    driver_executable_path = Path(config["DRIVER_EXECUTABLE_PATH"])
     return driver_executable_path if driver_executable_path.exists() else None
 
 
@@ -97,7 +97,7 @@ class SeleniumRequests:
         self._wait25.until(EC.any_of(
             EC.element_to_be_clickable((By.XPATH, '//div[@id="radix-:R3dm:"]//button')),
             EC.presence_of_element_located((By.XPATH, '//iframe[@allow="cross-origin-isolated"]')),
-            EC.presence_of_element_located((By.XPATH, "//button/div[text()=\"Next\"]")),
+            EC.presence_of_element_located((By.XPATH, "//button/div[text()=\"Okay, let’s go\"]")),
             EC.presence_of_element_located((By.XPATH, '//textarea[@id="prompt-textarea"]'))
         ))
         if self.driver.find_elements(By.XPATH, '//div[@id="radix-:R3dm:"]//button'):
@@ -105,22 +105,19 @@ class SeleniumRequests:
         if self.driver.find_elements(By.XPATH, '//iframe[@allow="cross-origin-isolated"]'):
             return "cloudflare"
 
-        if self.driver.find_elements(By.XPATH, "//button/div[text()=\"Next\"]"):
-            self.driver.find_element(By.XPATH, "//button/div[text()=\"Next\"]").click()
-            self.driver.find_element(By.XPATH, "//button/div[text()=\"Next\"]").click()
-            self.driver.find_element(By.XPATH, "//button/div[text()=\"Done\"]").click()
+        if self.driver.find_elements(By.XPATH, "//button/div[text()=\"Okay, let’s go\"]"):
+            self.driver.find_element(By.XPATH, "//button/div[text()=\"Okay, let’s go\"]").click()
         if self.driver.find_elements(By.XPATH, '//textarea[@id="prompt-textarea"]'):
             return "prompt-textarea"
 
     def _handle_welcome_click(self) -> Literal["prompt-textarea"]:
         self._wait25.until(EC.any_of(
-            EC.presence_of_element_located((By.XPATH, "//button/div[text()=\"Next\"]")),
+            EC.presence_of_element_located((By.XPATH, "//button/div[text()=\"Okay, let’s go\"]")),
             EC.presence_of_element_located((By.XPATH, '//textarea[@id="prompt-textarea"]'))
         ))
-        if self.driver.find_elements(By.XPATH, "//button/div[text()=\"Next\"]"):
+        if self.driver.find_elements(By.XPATH, "//button/div[text()=\"Okay, let’s go\"]"):
+            self.driver.find_element(By.XPATH, "//button/div[text()=\"Okay, let’s go\"]").click()
             self.driver.find_element(By.XPATH, "//button/div[text()=\"Next\"]").click()
-            self.driver.find_element(By.XPATH, "//button/div[text()=\"Next\"]").click()
-            self.driver.find_element(By.XPATH, "//button/div[text()=\"Done\"]").click()
         if self.driver.find_elements(By.XPATH, '//textarea[@id="prompt-textarea"]'):
             return "prompt-textarea"
 

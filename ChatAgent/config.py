@@ -19,6 +19,6 @@ def _get_user_agent_ua_local() -> dict | None:
 path = Path(__file__).parent / ".env"
 config = dotenv_values(path.absolute())
 config["ACCOUNTS"] = json.loads(config["ACCOUNTS"])
-config["DEBUG"] = json.loads(config["DEBUG"])
 config["COV"] = json.loads((config["COV"]))
+config["DEBUG"] = json.loads(config["DEBUG"])
 config.setdefault("USER_AGENT_UA", _get_user_agent_ua_local())

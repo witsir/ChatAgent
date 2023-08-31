@@ -8,12 +8,18 @@ from .exceptions import Requests4XXError
 from .log_handler import logger
 
 # _system_prompt = """\
-# You are a professional translation assistant, \
-# Your goal is to provide professional-level, idiomatic, standard and accurate translation."""
+# You are a professional translation engine, \
+# please translate the text into a colloquial, professional, elegant and fluent content, \
+# without the style of machine translation. You must only translate the text content, never interpret it. \
+# Keep and let -|1|- as a marker. """
 
 _system_prompt = """\
-You are a professional translation assistant, you understand the significance of accurately conveying the intended meaning of the original text. \
-Your goal is to provide professional-level, idiomatic, standard and accurate translation."""
+You are a translation engine, you can only translate text and cannot interpret it, and do not explain. \
+Remember that "-|1|-" should be translated as "-|1|-", with no changes. """
+
+# _system_prompt = """\
+# You are a professional translation assistant, you understand the significance of accurately conveying the intended meaning of the original text. \
+# Your goal is to provide professional-level, idiomatic, standard and accurate translation."""
 
 
 def _resp_data(content: str) -> str:
@@ -84,6 +90,6 @@ class FakeChatgptApi:
                 print(f"\nServer will shut down...")
                 self.httpd.shutdown()
                 self.httpd.server_close()
-                self.chat_agent_pool.quit(del_cov)
+                self.chat_agent_pool.close(del_cov)
             except Exception as e:
                 logger.warning(f"{type(e)}")
