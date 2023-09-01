@@ -353,7 +353,7 @@ class ChatgptAgent:
             else:
                 raise Requests4XXError(
                     message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
-                            f"{r.text[0:130]}...")
+                            f"{r.text[0:130]}...\n")
         elif r.status_code >= 500:
             raise Requests500Error(
                 message=f"{self.user['EMAIL']} | {r.status_code} | [Response Text] {r.text}")
