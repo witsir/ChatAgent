@@ -7,8 +7,8 @@ from json import JSONDecodeError
 from pathlib import Path
 
 import requests
-from requests.utils import cookiejar_from_dict
 from certifi import where
+from requests.utils import cookiejar_from_dict
 
 from .auth_handler import get_cookies, save_cookies, get_access_token
 from .config import config
@@ -153,22 +153,23 @@ class ChatgptAgent:
         if not conversation_id:
             conversation_id = self._current_conversation.conversation_id
         try:
-            response = self.session.patch(
+            r = self.session.patch(
                 url=f"https://chat.openai.com/backend-api/conversation/{conversation_id}",
                 headers=get_headers_for_moderations(self.access_token, conversation_id),
                 data=payload)
         except Exception as e:
             raise RequestsError(f"{type(e)}")
 
-        if response.status_code == 200:
-            logger.info(f"SUCCESS: Delete conversation {self.user['EMAIL']} {response.json()}")
+        if r.status_code == 200:
+            logger.info(f"SUCCESS: Delete conversation {self.user['EMAIL']} {r.json()}")
             self._current_conversation = ConversationAgent(self.user)
-            return response.json()["success"]
-        elif response.status_code == 403:
-            self._update_cookies_again()
+            return r.json()["success"]
+        elif 400 <= r.status_code < 500:
+            self._update_cookies_again(False)
             self.del_conversation_remote(conversation_id)
         else:
-            raise RequestsError(f"Requests {response.status_code}")
+            raise RequestsError(message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
+                                        f"{r.text}\n")
 
     def del_all_conversations(self):
         for conversation_id in _list_local_conversations_id(self.user):
@@ -350,16 +351,22 @@ class ChatgptAgent:
                 logger.warning(f"{self.user['EMAIL']} | [Status Code] {r.status_code}")
                 self._update_cookies_again(False)
                 return self._complete_conversation(conversation, headers, content_parts=content_parts, is_continue=True)
+            elif r.status_code == 401:
+                raise AuthenticationTokenExpired(
+                    message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
+                            f"{r.text}\n")
             else:
                 raise Requests4XXError(
                     message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
                             f"{r.text[0:130]}...\n")
         elif r.status_code >= 500:
             raise Requests500Error(
-                message=f"{self.user['EMAIL']} | {r.status_code} | [Response Text] {r.text}")
+                message=f"{self.user['EMAIL']} | {r.status_code} | [Response Text]\n"
+                        f"{r.text}\n")
         else:
             raise RequestsError(
-                message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text] {r.text}")
+                message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
+                        f"{r.text}\n")
 
     def ask_chat(self, prompt: str) -> str | None:
         with self.lock:
@@ -391,9 +398,7 @@ class ChatgptAgent:
                     f"{e.message}\n{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
                 if not self.sl:
                     self.sl = SeleniumRequests(self.user)
-                    self.cookies, self.access_token = self.sl.chatgpt_login()
-                else:
-                    self.cookies, self.access_token = self.sl.fetch_access_token_cookies(True)
+                self.cookies, self.access_token = self.sl.chatgpt_login()
                 self.session.cookies.update(
                     cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
                 if not self._current_conversation.is_new_conversation:
@@ -416,16 +421,10 @@ class ChatAgentPool(metaclass=SingletonMeta):
         return self
 
     def __exit__(self, del_cov: bool = True, exc_type=None, exc_val=None, exc_tb=None):
-        threads = []
-        for ins in self.instances:
-            t = threading.Thread(target=ins.close)
-            threads.append(t)
-            t.start()
-        for t in threads:
-            t.join()
-        for ins in self.instances:
-            if ins.sl:
-                ins.sl.get_driver.quit()
+        ths = [threading.Thread(target=ins.close) for ins in self.instances]
+        [t.start() for t in ths]
+        [t.join() for t in ths]
+        [ins.sl.get_driver.quit() for ins in self.instances if ins.sl]
         # self.instances[len(self.instances)-1].sl.get_driver.quit()
 
     def close(self, del_cov: bool = True):

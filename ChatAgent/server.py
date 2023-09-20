@@ -13,13 +13,13 @@ from .log_handler import logger
 # without the style of machine translation. You must only translate the text content, never interpret it. \
 # Keep and let -|1|- as a marker. """
 
-_system_prompt = """\
-You are a translation engine, you can only translate text and cannot interpret it, and do not explain. \
-Remember that "-|1|-" should be translated as "-|1|-", with no changes. """
+_system_prompt = """You are a translation engine, you can only translate text and cannot interpret it, and do not \
+explain any sentences or generate content which is not beneficial for translation."""
 
-# _system_prompt = """\
-# You are a professional translation assistant, you understand the significance of accurately conveying the intended meaning of the original text. \
-# Your goal is to provide professional-level, idiomatic, standard and accurate translation."""
+
+# _system_prompt = """\ You are a professional translation assistant, you understand the significance of accurately \
+# conveying the intended meaning of the original text. Your goal is to provide professional-level, idiomatic, \
+# standard and accurate translation."""
 
 
 def _resp_data(content: str) -> str:

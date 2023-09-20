@@ -190,6 +190,8 @@ class SeleniumRequests:
         time.sleep(1)
 
     def chatgpt_login(self) -> tuple[list[dict], str] | list[dict]:
+        self.driver.execute_cdp_cmd('Network.setUserAgentOverride',
+                                    {'userAgent': config["USER_AGENT_UA"]["User-Agent"]})
         self.driver.get('https://chat.openai.com')
         self.driver.delete_all_cookies()
         self.driver.get('https://chat.openai.com/auth/login')
@@ -215,6 +217,8 @@ class SeleniumRequests:
         cookies_ = get_cookies("chatgpt", self.user)
         if not cookies_:
             return self.chatgpt_login()
+        self.driver.execute_cdp_cmd('Network.setUserAgentOverride',
+                                    {'userAgent': config["USER_AGENT_UA"]["User-Agent"]})
         self.driver.get('https://chat.openai.com')
         if (not config["USER_AGENT_UA"]) or (int(self.driver.capabilities['browserVersion'].split(".")[0]) !=
                                              config["USER_AGENT_UA"]["version_main"]):
