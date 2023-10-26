@@ -145,6 +145,8 @@ class SeleniumRequests:
             EC.element_to_be_clickable((By.XPATH, '//button[@data-action-button-primary="true"]'))
         )
         el_submit.click()
+        time.sleep(1)
+        el_submit.click()
 
     # def _get_next_data(self):
     #     next_data = self.driver.find_elements(By.XPATH, '//script[@id="__NEXT_DATA__"]')
@@ -249,9 +251,7 @@ class SeleniumRequests:
             except (TimeoutException, NoSuchElementException) as e:
                 logger.warning(f"error {e.msg}")
         if "session_expired" == get_to:
-            self.driver.find_element(By.XPATH, '//div[@id="radix-:R3dm:"]//button').click()
-            self._handle_login(self.user["EMAIL"], self.user["PASSWORD"])
-            get_to = self._handle_welcome_click()
+            return self.chatgpt_login()
         if "prompt-textarea" == get_to:
             return self.fetch_access_token_cookies(True)
         else:

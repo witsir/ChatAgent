@@ -39,9 +39,9 @@ def save_access_token(name: LLM_PROVIDER, user: dict, token_str: str):
             path = path / f"{user['EMAIL']}_accessToken.json"
             with open(path, 'w') as f:
                 f.write(token_str)
-                logger.info(f"success in saving {user['EMAIL']}_accessToken.json")
+                logger.info(f"SUCCESS: Saving {user['EMAIL']}_accessToken.json")
         except Exception as e:
-            logger.error(f"failed in saving {user['EMAIL']}_accessToken.json\n{type(e)}")
+            logger.error(f"FAILED: Saving {user['EMAIL']}_accessToken.json\n{type(e)}")
     if name == "bard":
         ...
 
@@ -71,9 +71,9 @@ def save_cookies(name: LLM_PROVIDER, user: dict, cookies: list[dict]):
             path = path / f"{user['EMAIL']}_cookies.json"
             with open(path, 'w') as f:
                 json.dump(cookies, f)
-                logger.info(f"success in saving {user['EMAIL']}_cookies.json")
+                logger.info(f"SUCCESS: Saved {user['EMAIL']}_cookies.json")
         except Exception as e:
-            logger.error(f"failed in saving {user['EMAIL']}_cookies.json\n{type(e)}")
+            logger.error(f"FAILED: Saving {user['EMAIL']}_cookies.json\n{type(e)}")
     if name == "bard":
         ...
 

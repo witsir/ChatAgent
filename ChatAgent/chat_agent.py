@@ -325,6 +325,10 @@ class ChatgptAgent:
             try:
                 last_data = re.search(r'data: (.*)', iter_line.decode("utf-8")).group(1)
                 complete_data = json.loads(last_data)
+                if complete_data["message"] is None:
+                    raise Requests4XXError(
+                        message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
+                                f"{complete_data['error']}")
                 parts_start = last_data.find("parts") - 1
                 end_turn_start = last_data.find("end_turn") - 1
                 logger.info(f"SUCCESS: Get data from {conversation.user['EMAIL']}\n"
