@@ -50,8 +50,10 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         try:
             content_length = int(self.headers["Content-Length"])
             post_data = self.rfile.read(content_length).decode("utf-8")
+            # logger.info(f'post_data:\n{post_data}')
+            system_prompt = json.loads(post_data)["messages"][0]["content"]
             prompt = json.loads(post_data)["messages"][1]["content"]
-            response = _resp_data(SimpleHTTPRequestHandler.chat_agent_pool.ask_chat(_system_prompt + prompt))
+            response = _resp_data(SimpleHTTPRequestHandler.chat_agent_pool.ask_chat(system_prompt + " " + prompt))
             self.send_response(200)
             self.send_header("Content-type", "application/json'")
             self.end_headers()

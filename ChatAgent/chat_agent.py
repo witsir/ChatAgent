@@ -24,17 +24,10 @@ from .uc_back import SeleniumRequests
 from .utils import retry, SingletonMeta
 
 
-# def _callback_mod(r, *args, **kwargs):
-#     if r.status_code == 200 and 'json' in r.headers['Content-Type']:
-#         try:
-#             moderation = r.json()
-#             if moderation["flagged"] or moderation["blocked"]:
-#                 logger.warning(f"moderation flagged is {moderation['flagged']} blocked is {moderation['blocked']}")
-#         except Exception as e:
-#             logger.warning(f"some error happen {type(e)}")
-
-
 def _update_cookies(session: requests.Session, resp: requests.Response, chat_cookies: list[dict]):
+    """
+
+    """
     session.cookies.update(resp.cookies)
     for cookie_jar in resp.cookies:
         found = False
@@ -244,19 +237,13 @@ class ChatgptAgent:
         try:
             return get_cookies("chatgpt", self.user)
         except NoSuchCookiesException as e:
-            logger.warning(f"{e.message}. Will use Selenium next.")
-            self.sl = SeleniumRequests(self.user)
-            cookies, _ = self.sl.chatgpt_login()
-            return cookies
+            logger.warning(f"{e.message}. Please extract cookie from web browser")
 
     def get_access_token(self) -> str | None:
         try:
             return get_access_token("chatgpt", self.user)
         except AccessTokenExpiredException as e:
-            logger.warning(f"{e.message}. Will use Selenium next.")
-            self.sl = SeleniumRequests(self.user)
-            self.cookies, access_token = self.sl.chatgpt_login()
-            return access_token
+            logger.warning(f"{e.message}. Please extract access_token from web browser")
         except Exception as e:
             logger.error(f"{type(e)}")
             return None
@@ -277,22 +264,14 @@ class ChatgptAgent:
             return self._update_cookies_for_requests(session)
         except NoSuchCookiesException as e:
             logger.warning(f"{e.message}")
-            self.sl = SeleniumRequests(self.user)
-            self.sl.chatgpt_login()
-            return self._update_cookies_for_requests(session)
 
     def _update_cookies_again(self, auth_again: bool = False):
-        if not self.sl:
-            self.sl = SeleniumRequests(self.user)
-            self.cookies, self.access_token = self.sl.chatgpt_log_with_cookies()
+        if auth_again:
+            self.cookies, self.access_token = self.sl.fetch_access_token_cookies(True)
             self._update_cookies_for_requests(self.session)
         else:
-            if auth_again:
-                self.cookies, self.access_token = self.sl.fetch_access_token_cookies(True)
-                self._update_cookies_for_requests(self.session)
-            else:
-                self.cookies = self.sl.fetch_access_token_cookies(False)
-                self._update_cookies_for_requests(self.session)
+            self.cookies = self.sl.fetch_access_token_cookies(False)
+            self._update_cookies_for_requests(self.session)
 
     @retry
     def _complete_conversation(self,
@@ -309,7 +288,6 @@ class ChatgptAgent:
                 headers=headers,
                 data=playload,
                 stream=True,
-                # allow_redirects=False,
                 verify=where()
             )
         except Exception as e:
@@ -358,19 +336,19 @@ class ChatgptAgent:
             elif r.status_code == 401:
                 raise AuthenticationTokenExpired(
                     message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
-                            f"{r.text}\n")
+                            f"{r.text}")
             else:
                 raise Requests4XXError(
                     message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
-                            f"{r.text[0:130]}...\n")
+                            f"{r.text[0:130]}...")
         elif r.status_code >= 500:
             raise Requests500Error(
                 message=f"{self.user['EMAIL']} | {r.status_code} | [Response Text]\n"
-                        f"{r.text}\n")
+                        f"{r.text}")
         else:
             raise RequestsError(
                 message=f"{self.user['EMAIL']} | [Status Code] {r.status_code}| [Response Text]\n"
-                        f"{r.text}\n")
+                        f"{r.text}")
 
     def ask_chat(self, prompt: str) -> str | None:
         with self.lock:
@@ -394,15 +372,15 @@ class ChatgptAgent:
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
             except Requests4XXError as e:
                 logger.warning(
-                    f"{e.message}\n{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
+                    f"{e.message}\n{self._current_conversation.user['EMAIL']} | will call _complete_conversation again")
                 self._update_cookies_again(False)
                 return self._complete_conversation(self._current_conversation, headers, conversation_playload)
             except AuthenticationTokenExpired as e:
                 logger.warning(
-                    f"{e.message}\n{self._current_conversation.user['EMAIL']}| will call _complete_conversation again")
+                    f"{e.message}\n{self._current_conversation.user['EMAIL']} | will call _complete_conversation again")
                 if not self.sl:
                     self.sl = SeleniumRequests(self.user)
-                self.cookies, self.access_token = self.sl.chatgpt_login()
+                self.cookies, self.access_token = self.sl.chatgpt_login_with_cookies()
                 self.session.cookies.update(
                     cookiejar_from_dict({cookie['name']: cookie['value'] for cookie in self.cookies}))
                 if not self._current_conversation.is_new_conversation:
